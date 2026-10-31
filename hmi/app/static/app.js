@@ -116,19 +116,67 @@ function renderTop() {
   chip.className = `chip ${s.key_tech ? "tech" : ""}`;
   $("#btn-reset").disabled = !s.key_tech;
 
-  const banner = $("#banner");
-  if (s.relays.K1_A) {
-    banner.textContent = "BRANDLARM – vattenflöde i sprinklersystemet";
-    banner.className = "banner alarm"; banner.hidden = false;
-  } else if (!s.config_in_sync) {
-    banner.textContent = "Konfigurationen i centralen skiljer sig från den sparade";
-    banner.className = "banner"; banner.hidden = false;
-  } else if (s.buzzer) {
-    banner.textContent = "Okvitterade händelser – tryck Kvittera";
-    banner.className = "banner"; banner.hidden = false;
-  } else {
-    banner.hidden = true;
+  renderStatusBand();
+}
+
+// ---------------------------------------------------------------- status band
+const ICONS = {
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>',
+  fire: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 3.5-1.5 5-1.5 7.5 0 1.4 1 2.5 2.3 2.5 1.6 0 2.2-1.5 2-3.5 2.2 1.6 3.7 4.3 3.7 7.1C18.5 19.6 15.6 22 12 22s-6.5-2.4-6.5-6.4C5.5 10 12 7.5 12 2z"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18.5v.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 11v6M12 7.5v.01"/></svg>',
+  lost: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19v.01M3 3l18 18"/></svg>',
+};
+
+function setBand(kind, icon, title, sub, hint = "", unacked = false) {
+  const el = $("#statusband");
+  el.className = `statusband sb-${kind} ${unacked ? "unacked" : ""}`;
+  if ($("#sb-icon").dataset.icon !== icon) { $("#sb-icon").innerHTML = ICONS[icon]; $("#sb-icon").dataset.icon = icon; }
+  $("#sb-title").textContent = title;
+  $("#sb-sub").textContent = sub;
+  $("#sb-hint").textContent = hint;
+  document.body.classList.toggle("fire", kind === "fire");
+  document.body.classList.toggle("unacked", kind === "fire" && unacked);
+}
+
+function namesOf(list) {
+  const names = list.map((x) => x.p.name);
+  return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
+}
+
+function renderStatusBand() {
+  const s = S.status;
+  const items = S.points.map((p) => ({ p, v: visual(p) })).filter((x) => x.v.active);
+  const of = (kind) => items.filter((x) => x.v.kind === kind);
+  const lost = s.lost_modules || [];
+  const hint = s.buzzer ? "Tryck Kvittera" : "";
+
+  const fire = of("A");
+  if (s.relays.K1_A || fire.length) {
+    const unacked = fire.some((x) => x.v.unacked) || items.some((x) => x.p.category === "A" && x.p.runtime && x.p.runtime.state === "LATCHED" && !x.p.runtime.acked);
+    const latchedOnly = fire.length && fire.every((x) => x.p.runtime.state === "LATCHED");
+    setBand("fire", "fire", "Brandlarm",
+      `${namesOf(fire)}${latchedOnly ? " – orsak borta, väntar återställning" : " – vattenflöde i sprinklersystemet"}`,
+      unacked ? "Tryck Kvittera" : (latchedOnly ? "Återställ med nyckel" : "Kvitterat"), unacked);
+    return;
   }
+  const faults = of("FAULT");
+  if (faults.length || lost.length || !s.relays.K3_FAULT_OK) {
+    const n = faults.length + lost.length;
+    const what = faults.length ? `${namesOf(faults)}: ${faults[0].v.text}` : `Linje ${lost[0][0]}, modul ${lost[0][1]} saknas`;
+    setBand("fault", "warn", n > 1 ? `Fel (${n})` : "Fel", what, hint);
+    return;
+  }
+  const b = of("B");
+  if (b.length) { setBand("b", "warn", b.length > 1 ? `B-larm (${b.length})` : "B-larm", namesOf(b), hint, b.some((x) => x.v.unacked)); return; }
+  const c = of("C");
+  if (c.length) { setBand("c", "info", c.length > 1 ? `C-larm (${c.length})` : "C-larm", `Kvitterat, orsak kvarstår: ${namesOf(c)}`, hint); return; }
+  const pending = of("PENDING");
+  if (pending.length) { setBand("pending", "info", "Fördröjning pågår", `${namesOf(pending)} – ${pending[0].v.text.toLowerCase()}`, hint); return; }
+  const off = of("OFF");
+  if (off.length) { setBand("off", "info", "Frånkopplad punkt", `${off.length} punkt(er) frånkopplade: ${namesOf(off)}`, hint); return; }
+  if (!s.config_in_sync) { setBand("off", "info", "Kontrollera konfiguration", "Centralen kör en annan konfiguration än den sparade", hint); return; }
+  setBand("ok", "ok", "Allt normalt", `Inga larm eller fel · ${S.points.length} larmpunkter övervakas`, hint);
 }
 
 // ---------------------------------------------------------------- overview
@@ -589,6 +637,7 @@ async function refresh() {
     autoShowNewAlarm();
   } catch (err) {
     $("#led-drift").className = "led";
+    setBand("lost", "lost", "Ingen kontakt med centralen", "Statusen kan inte visas – kontrollera centralen och nätverket");
     if (lastStatusOk) toast("Ingen kontakt med servern", "bad");
     lastStatusOk = false;
   }

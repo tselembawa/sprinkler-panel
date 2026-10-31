@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="sticky-head">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
@@ -28,7 +29,15 @@
     </div>
   </header>
 
-  <div class="banner" id="banner" hidden></div>
+  <div class="statusband sb-lost" id="statusband" role="status" aria-live="assertive">
+    <span class="sb-icon" id="sb-icon" aria-hidden="true"></span>
+    <div class="sb-text">
+      <div class="sb-title" id="sb-title">Ansluter…</div>
+      <div class="sb-sub" id="sb-sub"></div>
+    </div>
+    <div class="sb-hint" id="sb-hint"></div>
+  </div>
+  </div>
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview" class="active">Översikt</button>
