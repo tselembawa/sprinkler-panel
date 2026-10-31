@@ -322,7 +322,7 @@ input[type=search] { min-width: 280px; }
 .service-btns .btn { min-width: 84px; justify-content: center; }
 
 /* ---------- narrow screens (7" touchscreen is 800 px wide) ---------- */
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
   .topbar { gap: 8px; padding: 8px 8px; flex-wrap: nowrap; }
   .brand-name { display: none; }
   .indicators { gap: 8px; flex-wrap: nowrap; }
