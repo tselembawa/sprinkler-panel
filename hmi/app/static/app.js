@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------- labels
 const CAT_SV = { A: "A-larm", B: "B-larm", C: "C-larm", DRIFT: "Drift", FAULT: "Fel" };
 const DEVICE_SV = {
-  SERVICEVENTIL: "Serviceventil", LARMVENTIL: "Larmventil", PRESSOSTAT: "Larmpressostat",
+  SERVICEVENTIL: "Serviceventil", UNDERSEKTIONSVENTIL: "Undersektionsventil", LARMVENTIL: "Larmventil", PRESSOSTAT: "Larmpressostat",
   FLODESVAKT: "Flödesvakt", PUMP_RUN: "Pump i drift", PUMP_FAULT: "Pumpfel",
   TEMP: "Låg temperatur", GENERIC: "Övrigt",
 };
