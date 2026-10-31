@@ -285,17 +285,105 @@ function renderGraphics() {
 
   const markers = pg.markers.map((m) => {
     const p = S.points.find((x) => x.id === m.point_id);
-    const v = p ? visual(p) : { cls: "disabled" };
-    return { m, p, v };
+    const v = p ? visual(p) : { cls: "disabled", text: "Okänd punkt" };
+    return { m, p, v, kind: markerKind(p, v) };
   });
-  const key = [pg.id, S.editing, markers.map(({ m, v }) => [m.id, m.x, m.y, v.cls])];
-  if (changed("canvas", key)) {
-    $("#markers").innerHTML = markers.map(({ m, p, v }) =>
-      `<div class="marker ${v.cls}" data-marker="${m.id}" data-point="${m.point_id}"
-         style="left:${(m.x * 100).toFixed(3)}%;top:${(m.y * 100).toFixed(3)}%"
-         data-label="${esc(p ? `${p.id} ${p.name}` : `? ${m.point_id}`)}"></div>`).join("");
+  const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0;
+  const key = [pg.id, S.editing, ratio, markers.map(({ m, v, kind }) => [m.id, m.x, m.y, kind, v.text, v.unacked])];
+  if (!changed("canvas", key)) return;
+
+  const sides = placeTags(markers.filter((x) => S.editing || SPOT_KINDS.has(x.kind) || x.kind === "pending" || x.kind === "DRIFT"));
+  $("#markers").innerHTML = markers.map(({ m, p, v, kind }) => {
+    const alarm = SPOT_KINDS.has(kind) || kind === "pending" || kind === "DRIFT";
+    const side = sides.get(m.id) || "ru";
+    const name = p ? p.name : `Punkt ${m.point_id}`;
+    let tag = "";
+    if (S.editing) {
+      tag = `<span class="mk-tag edit ${side}"><b>${p ? p.id + " " : ""}${esc(name)}</b></span>`;
+    } else if (alarm) {
+      tag = `<span class="mk-tag ${side}"><span class="mk-ic">${markerIcon(p, kind)}</span>
+        <span><b>${esc(name)}</b><small>${esc(v.text)}</small></span></span>`;
+    }
+    return `<div class="mk k-${kind} ${v.unacked ? "pulse" : ""}" data-marker="${m.id}" data-point="${m.point_id}"
+      style="left:${(m.x * 100).toFixed(3)}%;top:${(m.y * 100).toFixed(3)}%">
+      <span class="mk-ring"></span><span class="mk-dot"></span>${tag}</div>`;
+  }).join("");
+
+  // Spotlight: darken the photo except around devices that need attention.
+  const spot = $("#spot");
+  const holes = S.editing || !ratio ? [] : markers.filter((x) => SPOT_KINDS.has(x.kind));
+  if (holes.length) {
+    const rx = 9, ry = rx * ratio;
+    const mask = holes.map(({ m }) =>
+      `radial-gradient(ellipse ${rx}% ${ry}% at ${(m.x * 100).toFixed(2)}% ${(m.y * 100).toFixed(2)}%, transparent 62%, #000 100%)`).join(", ");
+    spot.style.webkitMaskImage = mask;
+    spot.style.maskImage = mask;
+    spot.classList.add("on");
+  } else {
+    spot.classList.remove("on");
   }
 }
+
+const SPOT_KINDS = new Set(["A", "latched", "B", "C", "FAULT"]);
+
+// Choose a side for each tag so neighbouring tags do not cover each other.
+// Positions are fractions of the image; a tag is roughly 22% wide and 9% tall.
+function placeTags(list) {
+  const W = 0.22, H = 0.09, placed = [], out = new Map();
+  const rect = (m, s) => {
+    const x0 = s[0] === "r" ? m.x + 0.012 : m.x - 0.012 - W;
+    const y0 = s[1] === "u" ? m.y - 0.012 - H : m.y + 0.012;
+    return [x0, y0, x0 + W, y0 + H];
+  };
+  const hits = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const sorted = [...list].sort((a, b) => a.m.y - b.m.y || a.m.x - b.m.x);
+  for (const { m } of sorted) {
+    const prefX = m.x > 0.62 ? "l" : "r", altX = prefX === "r" ? "l" : "r";
+    const prefY = m.y < 0.22 ? "d" : "u", altY = prefY === "u" ? "d" : "u";
+    const options = [prefX + prefY, prefX + altY, altX + prefY, altX + altY];
+    const choice = options.find((s) => !placed.some((r) => hits(r, rect(m, s)))) || options[0];
+    placed.push(rect(m, choice));
+    out.set(m.id, choice);
+  }
+  return out;
+}
+
+function markerKind(p, v) {
+  if (!p || !p.runtime) return "OFF";
+  if (v.kind === "OFF") return "OFF";
+  if (v.kind === "PENDING") return "pending";
+  if (v.cls === "latched") return "latched";
+  if (["A", "B", "C", "FAULT", "DRIFT"].includes(v.kind)) return v.kind;
+  return "normal";
+}
+
+const SVG = (body, fill = false) =>
+  `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="${fill ? "none" : "currentColor"}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+const MK_ICONS = {
+  flame: SVG('<path d="M12 2c1 3.5-1.5 5-1.5 7.5 0 1.4 1 2.5 2.3 2.5 1.6 0 2.2-1.5 2-3.5 2.2 1.6 3.7 4.3 3.7 7.1C18.5 19.6 15.6 22 12 22s-6.5-2.4-6.5-6.4C5.5 10 12 7.5 12 2z"/>', true),
+  valve: SVG('<path d="M3 8v8M21 8v8M3 12h18M12 12V6M8 4h8"/>'),
+  gauge: SVG('<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M12 5V3"/>'),
+  flow: SVG('<path d="M3 9c2 0 2-2 4.5-2S10 9 12 9s2-2 4.5-2S19 9 21 9M3 16c2 0 2-2 4.5-2s2.5 2 4.5 2 2-2 4.5-2 2.5 2 4.5 2"/>'),
+  pump: SVG('<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>'),
+  temp: SVG('<path d="M10 14V5a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z"/>'),
+  warn: SVG('<path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18.5v.01"/>'),
+  clock: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  bell: SVG('<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4l2-2zM10 21h4"/>'),
+};
+function markerIcon(p, kind) {
+  if (kind === "A" || kind === "latched") return MK_ICONS.flame;
+  if (kind === "FAULT") return MK_ICONS.warn;
+  if (kind === "pending") return MK_ICONS.clock;
+  const t = p ? p.device_type : "";
+  if (t.includes("VENTIL")) return MK_ICONS.valve;
+  if (t === "PRESSOSTAT") return MK_ICONS.gauge;
+  if (t === "FLODESVAKT") return MK_ICONS.flow;
+  if (t.startsWith("PUMP")) return MK_ICONS.pump;
+  if (t === "TEMP") return MK_ICONS.temp;
+  return MK_ICONS.bell;
+}
+
+$("#page-img").addEventListener("load", () => { S.cache.canvas = null; renderGraphics(); });
 
 $("#page-chips").addEventListener("click", (e) => {
   const b = e.target.closest("[data-page]");
@@ -365,6 +453,7 @@ $("#page-img").addEventListener("click", (e) => {
 });
 
 $("#markers").addEventListener("click", async (e) => {
+  if (!e.target.closest(".mk-dot, .mk-tag")) return;
   const el = e.target.closest("[data-marker]");
   if (!el) return;
   e.stopPropagation();

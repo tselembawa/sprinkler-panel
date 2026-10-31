@@ -183,30 +183,56 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .canvas img { max-width: 100%; max-height: calc(100vh - 230px); border-radius: 6px; user-select: none; -webkit-user-drag: none; }
 .canvas.editing { cursor: crosshair; }
 .markers { position: absolute; inset: 0; pointer-events: none; }
-.marker {
-  position: absolute; width: 34px; height: 34px; transform: translate(-50%, -50%);
-  border-radius: 50%; border: 3px solid var(--green); background: #35c46a22; cursor: pointer; pointer-events: auto;
+/* Markers: a small dot at rest, a labelled tag + spotlight in alarm */
+.mk { position: absolute; width: 0; height: 0; pointer-events: none; color: var(--green); }
+.mk-dot {
+  position: absolute; left: 0; top: 0; width: 16px; height: 16px; transform: translate(-50%, -50%);
+  border-radius: 50%; background: currentColor; border: 3px solid #fff;
+  box-shadow: 0 0 0 2px #000a, 0 2px 8px #000c; pointer-events: auto; cursor: pointer;
 }
-.marker::after {
-  content: attr(data-label); position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
-  margin-top: 4px; font: 600 12px/1.2 system-ui, sans-serif; color: #fff; background: #000a; padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+.mk-dot::after { content: ""; position: absolute; inset: -14px; border-radius: 50%; }
+.mk-ring { position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; border: 4px solid currentColor; transform: translate(-50%, -50%); opacity: 0; }
+.mk.pulse .mk-ring { animation: pulse 1.3s ease-out infinite; }
+.mk.pulse .mk-dot { animation: mflash .8s steps(1) infinite; }
+.mk.k-A, .mk.k-B, .mk.k-C, .mk.k-FAULT, .mk.k-latched { z-index: 2; }
+.mk.k-A .mk-dot, .mk.k-B .mk-dot, .mk.k-C .mk-dot, .mk.k-FAULT .mk-dot, .mk.k-latched .mk-dot { width: 22px; height: 22px; }
+.mk.k-normal { color: #2fbf63; }
+.mk.k-OFF { color: #7c8790; }
+.mk.k-pending { color: #ffb020; }
+.mk.k-A, .mk.k-latched { color: #ff2430; }
+.mk.k-B, .mk.k-C { color: #ffb020; }
+.mk.k-FAULT { color: #ff7a1a; }
+.mk.k-DRIFT { color: #35e07a; }
+
+.mk-tag {
+  position: absolute; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px;
+  border-radius: 10px; border: 2px solid #fff; box-shadow: 0 3px 12px #000c;
+  background: #e01b22; color: #fff; white-space: nowrap; line-height: 1.15; pointer-events: auto; cursor: pointer;
 }
-.marker.pending { border-color: var(--amber); background: #ffb02033; }
-.marker.alarm-A, .marker.alarm-B, .marker.alarm-FAULT { width: 46px; height: 46px; }
-.marker.alarm-A { border-color: var(--red); background: #ff4b4b44; animation: mflash .8s steps(1) infinite; }
-.marker.alarm-B { border-color: var(--amber); background: #ffb02044; animation: mflash .8s steps(1) infinite; }
-.marker.alarm-C { border-color: var(--amber); background: #ffb02033; }
-.marker.alarm-FAULT { border-color: var(--orange); background: #ff7a1a44; animation: mflash .8s steps(1) infinite; }
-.marker.alarm-DRIFT { border-color: var(--green); background: #35c46a66; }
-.marker.fault { border-style: dashed; border-color: var(--orange); }
-.marker.disabled { border-color: var(--grey); background: #6b768033; }
-.marker.latched { border-color: var(--red); background: #ff4b4b22; }
-.marker.ring::before {
-  content: ""; position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; border-radius: 50%;
-  border: 3px solid currentColor; animation: pulse 1.4s ease-out infinite;
+.mk-tag.ru { left: 18px; bottom: 14px; }
+.mk-tag.lu { right: 18px; bottom: 14px; }
+.mk-tag.rd { left: 18px; top: 14px; }
+.mk-tag.ld { right: 18px; top: 14px; }
+.mk-tag b { display: block; font-size: 15px; font-weight: 700; }
+.mk-tag small { display: block; font-size: 12px; font-weight: 600; opacity: .92; }
+.mk-ic { display: grid; place-items: center; width: 28px; height: 28px; }
+.mk-ic svg { width: 26px; height: 26px; }
+.k-A .mk-tag { background: #e01b22; }
+.k-latched .mk-tag { background: #fff; color: #c3121b; border-color: #ff2430; }
+.k-B .mk-tag { background: #f0a000; color: #1a1200; }
+.k-C .mk-tag { background: #9a6d0c; }
+.k-FAULT .mk-tag { background: #e0600c; }
+.k-pending .mk-tag { background: #5e5016; }
+.k-DRIFT .mk-tag { background: #1f8f4e; }
+.mk-tag.edit { background: #000d; color: #fff; border: 1px solid #fff8; padding: 3px 8px; box-shadow: none; }
+.mk-tag.edit b { font-size: 12px; font-weight: 600; }
+
+.spot {
+  position: absolute; inset: 0; border-radius: 6px; background: rgba(0, 0, 0, .62);
+  pointer-events: none; opacity: 0; transition: opacity .4s;
+  -webkit-mask-composite: source-in; mask-composite: intersect;
 }
-.marker.alarm-A.ring { color: var(--red); }
-.marker.alarm-B.ring { color: var(--amber); }
+.spot.on { opacity: 1; }
 
 /* ---------- forms, tables ---------- */
 .upload label, .point-form label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 14px; margin-bottom: 12px; }
