@@ -364,7 +364,8 @@ class SimController:
                     "red_a": a_active > 0,
                     "yellow_b": "flash" if b_unacked else ("steady" if c_active else "off"),
                     "yellow_fault": faults > 0,
-                    "green_drift": drift > 0,
+                    "green_drift": drift > 0,   # an operational indication is active (pump running etc.)
+                    "green_power": True,        # "Drift": the panel is running. Later: flashing on battery.
                 },
                 "buzzer": unacked,
                 "lost_modules": sorted(self._lost_modules),

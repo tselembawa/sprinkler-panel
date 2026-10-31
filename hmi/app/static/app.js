@@ -109,7 +109,7 @@ function renderTop() {
   setLed("#led-a", s.leds.red_a ? "on-red flash" : "");
   setLed("#led-b", s.leds.yellow_b === "flash" ? "on-amber flash" : s.leds.yellow_b === "steady" ? "on-amber" : "");
   setLed("#led-fault", s.leds.yellow_fault ? "on-amber" : "");
-  setLed("#led-drift", s.leds.green_drift ? "on-green" : "");
+  setLed("#led-drift", s.leds.green_power ? "on-green" : "");
 
   const chip = $("#key-chip");
   chip.textContent = s.key_tech ? "Tekniker" : "Användare";
@@ -136,7 +136,7 @@ function renderOverview() {
   const c = S.status.counts;
   const tiles = [
     ["a", "A-larm", c.A], ["b", "B-larm", c.B], ["c", "C-larm", c.C],
-    ["f", "Fel", c.FAULT], ["d", "Drift", c.DRIFT], ["o", "Frånkopplade", c.DISABLED],
+    ["f", "Fel", c.FAULT], ["d", "Driftindikering", c.DRIFT], ["o", "Frånkopplade", c.DISABLED],
   ];
   if (changed("summary", c)) {
     $("#summary").innerHTML = tiles.map(([k, l, n]) =>
@@ -588,6 +588,7 @@ async function refresh() {
     renderSim();
     autoShowNewAlarm();
   } catch (err) {
+    $("#led-drift").className = "led";
     if (lastStatusOk) toast("Ingen kontakt med servern", "bad");
     lastStatusOk = false;
   }
