@@ -178,3 +178,15 @@ def test_events_have_increasing_sequence(ctl):
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
     later = ctl.get_events(seqs[-2])
     assert [e["seq"] for e in later] == [seqs[-1]]
+
+
+def test_set_time_requires_key_and_is_logged(ctl):
+    with pytest.raises(CommandError):
+        ctl.set_time(1_800_000_000)
+    ctl.sim_set_key(True)
+    ctl.set_time(1_800_000_000)
+    assert abs(ctl.get_status()["time"] - 1_800_000_000) < 1
+    ev = ctl.get_events(0)[-1]
+    assert ev["type"] == "TIME_SET" and abs(ev["time"] - 1_800_000_000) < 1
+    with pytest.raises(CommandError):
+        ctl.set_time(5)  # nonsense time is rejected

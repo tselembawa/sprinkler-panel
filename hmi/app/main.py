@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
+import json
 import os
 import threading
 import time
@@ -39,23 +40,22 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 db = Database(DATA / "sprinkler.db")
 controller = make_controller(start_seq=db.last_event_seq())
 
-LABELS_SV = {
-    "STARTUP": "Systemstart",
-    "CONFIG_ACTIVATED": "Ny konfiguration aktiverad",
-    "DELAY_STARTED": "Fördröjning startad",
-    "DELAY_CANCELLED": "Fördröjning avbruten",
-    "ALARM_ON": "Larm",
-    "ALARM_CLEARED": "Orsak återställd",
-    "LINE_OPEN": "Avbrott på linje",
-    "LINE_SHORT": "Kortslutning på linje",
-    "LINE_OK": "Linje OK",
-    "MODULE_LOST": "Modul saknas",
-    "MODULE_BACK": "Modul åter",
-    "ACK": "Kvittering",
-    "RESET": "Återställning",
-    "POINT_DISABLED": "Punkt frånkopplad",
-    "POINT_ENABLED": "Punkt tillkopplad",
-}
+I18N = json.loads((BASE / "static" / "i18n.json").read_text(encoding="utf-8"))
+LANGUAGES = tuple(I18N["languages"])
+
+
+def language() -> str:
+    lang = db.get_setting("language", I18N["default"])
+    return lang if lang in LANGUAGES else I18N["default"]
+
+
+def tr(key: str, lang: str | None = None) -> str:
+    lang = lang or language()
+    return I18N["strings"].get(lang, {}).get(key) or I18N["strings"][I18N["default"]].get(key, key)
+
+
+def event_label(etype: str, lang: str | None = None) -> str:
+    return tr(f"ev.type.{etype}", lang) if f"ev.type.{etype}" in I18N["strings"]["sv"] else etype
 
 
 # --------------------------------------------------------------- background
@@ -119,8 +119,10 @@ async def lifespan(app):
 
 
 # ------------------------------------------------------------------ helpers
-def err(msg: str, status: int = 400, **extra):
-    return JSONResponse({"error": msg, **extra}, status_code=status)
+def err(code: str, status: int = 400, **extra):
+    """Errors carry a code; the UI shows the text in the selected language."""
+    return JSONResponse({"error": tr(f"errc.{code}") if f"errc.{code}" in I18N["strings"]["sv"] else code,
+                         "code": code, **extra}, status_code=status)
 
 
 def parse_point(body: dict) -> dict:
@@ -151,11 +153,11 @@ def save_points(points: list[dict]):
     """Upload to the controller; store on the Pi only if the controller confirms."""
     res = controller.upload_config(points)
     if not res["ok"]:
-        return err("Konfigurationen avvisades av centralen", 422, errors=res["errors"])
+        return err("CONFIG_REJECTED", 422, errors=res["errors"])
     expected = P.config_crc(points)
     info = controller.config_info()
     if info["crc"] != expected:
-        return err("Centralen bekräftade inte konfigurationen (CRC stämmer inte)", 500)
+        return err("CRC_MISMATCH", 500)
     db.replace_points(points)
     return JSONResponse({"saved": True, "version": info["version"], "crc": f"{info['crc']:08X}"})
 
@@ -199,7 +201,7 @@ async def api_point_save(request: Request):
     try:
         new = parse_point(await request.json())
     except (ValueError, TypeError) as e:
-        return err(str(e))
+        return err("INVALID", detail=str(e))
     original_id = request.query_params.get("original_id")
     points = [p for p in db.points() if p["id"] != new["id"]]
     if original_id and original_id.isdigit() and int(original_id) != new["id"]:
@@ -232,9 +234,9 @@ async def api_cmd(request: Request):
         elif cmd == "disable":
             result = controller.cmd_disable(int(body["point_id"]), bool(body.get("disabled", True)))
         else:
-            return err("Okänt kommando", 404)
+            return err("UNKNOWN_COMMAND", 404)
     except CommandError as e:
-        return err(e.detail or e.code, 403, code=e.code)
+        return err(e.code, 403)
     sync_events()
     return JSONResponse(result)
 
@@ -243,21 +245,24 @@ async def api_events(request: Request):
     limit = min(int(request.query_params.get("limit", 200)), 5000)
     text = request.query_params.get("q", "").strip()
     rows = db.events(limit, text)
+    lang = language()
     for r in rows:
-        r["label"] = LABELS_SV.get(r["type"], r["type"])
+        r["label"] = event_label(r["type"], lang)
     return JSONResponse(rows)
 
 
 async def api_events_csv(request: Request):
     rows = db.events(100000, request.query_params.get("q", "").strip())
+    lang = language()
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["Nr", "Tid", "Händelse", "Typ", "Källa", "Id", "Punkt", "Från", "Till"])
+    w.writerow([tr(k, lang) for k in ("th.nr", "th.time", "th.event")] + ["Type", tr("th.source", lang), "Id",
+               tr("th.point", lang), tr("th.from", lang), tr("th.to", lang)])
     for r in rows:
         w.writerow([r["seq"], datetime.fromtimestamp(r["time"]).strftime("%Y-%m-%d %H:%M:%S"),
-                    LABELS_SV.get(r["type"], r["type"]), r["type"], r["source_kind"], r["source_id"],
+                    event_label(r["type"], lang), r["type"], r["source_kind"], r["source_id"],
                     r.get("point_name") or "", r["old"] or "", r["new"] or ""])
-    name = f"handelser_{datetime.now():%Y%m%d_%H%M}.csv"
+    name = f"events_{datetime.now():%Y%m%d_%H%M}.csv"
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
@@ -274,13 +279,13 @@ async def api_pages(request: Request):
     name = str(form.get("name", "")).strip() or "Ny bild"
     upload = form.get("file")
     if upload is None or not getattr(upload, "filename", ""):
-        return err("Ingen bild vald")
+        return err("NO_IMAGE")
     ext = Path(upload.filename).suffix.lower()
     if ext not in ALLOWED_IMAGES:
-        return err("Endast JPG, PNG, WEBP eller GIF")
+        return err("BAD_TYPE")
     data = await upload.read()
     if len(data) > MAX_IMAGE_BYTES:
-        return err("Bilden är för stor (max 15 MB)")
+        return err("TOO_BIG")
     filename = f"{uuid.uuid4().hex}{ext}"
     (UPLOADS / filename).write_bytes(data)
     pid = db.add_page(name, filename)
@@ -290,7 +295,7 @@ async def api_pages(request: Request):
 async def api_page_delete(request: Request):
     page = db.page(int(request.path_params["pid"]))
     if not page:
-        return err("Finns inte", 404)
+        return err("NOT_FOUND", 404)
     db.delete_page(page["id"])
     if page["filename"]:
         with contextlib.suppress(FileNotFoundError):
@@ -301,14 +306,14 @@ async def api_page_delete(request: Request):
 async def api_markers(request: Request):
     page_id = int(request.path_params["pid"])
     if not db.page(page_id):
-        return err("Bilden finns inte", 404)
+        return err("NOT_FOUND", 404)
     body = await request.json()
     x, y = float(body["x"]), float(body["y"])
     if not (0 <= x <= 1 and 0 <= y <= 1):
-        return err("Position utanför bilden")
+        return err("INVALID")
     pid = int(body["point_id"])
     if pid not in {p["id"] for p in db.points()}:
-        return err("Larmpunkten finns inte")
+        return err("NOT_FOUND")
     mid = db.add_marker(page_id, x, y, pid)
     return JSONResponse({"id": mid})
 
@@ -318,10 +323,37 @@ async def api_marker_delete(request: Request):
     return JSONResponse({"deleted": True})
 
 
+# --- settings
+async def api_settings(request: Request):
+    if request.method == "GET":
+        return JSONResponse({"language": language(), "languages": I18N["languages"],
+                             "time": controller.get_status()["time"]})
+    body = await request.json()
+    if not controller.get_status()["key_tech"]:
+        return err("ACCESS_DENIED", 403)
+    lang = str(body.get("language", ""))
+    if lang not in LANGUAGES:
+        return err("BAD_LANGUAGE")
+    db.set_setting("language", lang)
+    return JSONResponse({"language": lang})
+
+
+async def api_time(request: Request):
+    body = await request.json()
+    try:
+        result = controller.set_time(float(body["time"]))
+    except (KeyError, TypeError, ValueError):
+        return err("BAD_TIME")
+    except CommandError as e:
+        return err(e.code, 403 if e.code == "ACCESS_DENIED" else 400)
+    sync_events()
+    return JSONResponse(result)
+
+
 # --- simulator only
 async def api_sim(request: Request):
     if not hasattr(controller, "sim_set_input"):
-        return err("Simulatorn är inte aktiv", 404)
+        return err("NOT_FOUND", 404)
     what = request.path_params["what"]
     body = await request.json()
     try:
@@ -333,7 +365,7 @@ async def api_sim(request: Request):
         elif what == "module":
             controller.sim_set_module_lost(int(body["line"]), int(body["module"]), bool(body["lost"]))
         else:
-            return err("Okänt", 404)
+            return err("NOT_FOUND", 404)
     except CommandError as e:
         return err(e.code)
     sync_events()
@@ -353,6 +385,8 @@ routes = [
     Route("/api/pages/{pid:int}", api_page_delete, methods=["DELETE"]),
     Route("/api/pages/{pid:int}/markers", api_markers, methods=["POST"]),
     Route("/api/markers/{mid:int}", api_marker_delete, methods=["DELETE"]),
+    Route("/api/settings", api_settings, methods=["GET", "POST"]),
+    Route("/api/time", api_time, methods=["POST"]),
     Route("/api/sim/{what}", api_sim, methods=["POST"]),
     Mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads"),
     Mount("/", StaticFiles(directory=BASE / "static", html=True), name="static"),

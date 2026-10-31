@@ -130,6 +130,15 @@ class Database:
     def delete_marker(self, marker_id: int):
         self._x("DELETE FROM markers WHERE id = ?", (marker_id,))
 
+    # --- settings
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        rows = self._q("SELECT value FROM meta WHERE key = ?", (key,))
+        return rows[0]["value"] if rows else default
+
+    def set_setting(self, key: str, value: str):
+        self._x("INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+
     # --- events
     def last_event_seq(self) -> int:
         rows = self._q("SELECT MAX(seq) AS s FROM events")

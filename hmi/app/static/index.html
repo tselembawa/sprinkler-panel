@@ -8,31 +8,32 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- Text in elements with data-i18n is replaced by the selected language (see i18n.json). -->
   <div class="sticky-head">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-name">Sprinklercentral</span>
+      <span class="brand-name" data-i18n="app.title">Sprinklercentral</span>
     </div>
 
-    <div class="indicators" aria-label="Indikeringar">
-      <span class="led" id="led-a" title="A-larm"><i></i>A-larm</span>
-      <span class="led" id="led-b" title="B-larm / C-larm"><i></i>B/C-larm</span>
-      <span class="led" id="led-fault" title="Fel"><i></i>Fel</span>
-      <span class="led" id="led-drift" title="Centralen i drift"><i></i>Drift</span>
+    <div class="indicators">
+      <span class="led" id="led-a"><i></i><span data-i18n="led.a">A-larm</span></span>
+      <span class="led" id="led-b"><i></i><span data-i18n="led.bc">B/C-larm</span></span>
+      <span class="led" id="led-fault"><i></i><span data-i18n="led.fault">Fel</span></span>
+      <span class="led" id="led-drift"><i></i><span data-i18n="led.drift">Drift</span></span>
     </div>
 
     <div class="actions">
-      <span class="chip" id="key-chip" title="Nyckelbrytare">Användare</span>
-      <button class="btn btn-ack" id="btn-ack">Kvittera</button>
-      <button class="btn btn-reset" id="btn-reset">Återställ</button>
+      <span class="chip" id="key-chip">Användare</span>
+      <button class="btn btn-ack" id="btn-ack" data-i18n="btn.ack">Kvittera</button>
+      <button class="btn btn-reset" id="btn-reset" data-i18n="btn.reset">Återställ</button>
     </div>
   </header>
 
   <div class="statusband sb-lost" id="statusband" role="status" aria-live="assertive">
     <span class="sb-icon" id="sb-icon" aria-hidden="true"></span>
     <div class="sb-text">
-      <div class="sb-title" id="sb-title">Ansluter…</div>
+      <div class="sb-title" id="sb-title">…</div>
       <div class="sb-sub" id="sb-sub"></div>
     </div>
     <div class="sb-hint" id="sb-hint"></div>
@@ -40,11 +41,15 @@
   </div>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="overview" class="active">Översikt</button>
-    <button role="tab" data-tab="graphics">Grafik</button>
-    <button role="tab" data-tab="points">Larmpunkter</button>
-    <button role="tab" data-tab="events">Händelser</button>
-    <button role="tab" data-tab="sim" id="tab-sim" hidden>Simulator</button>
+    <button role="tab" data-tab="overview" class="active" data-i18n="tab.overview">Översikt</button>
+    <button role="tab" data-tab="graphics" data-i18n="tab.graphics">Grafik</button>
+    <button role="tab" data-tab="points" data-i18n="tab.points">Larmpunkter</button>
+    <button role="tab" data-tab="events" data-i18n="tab.events">Händelser</button>
+    <button role="tab" data-tab="sim" id="tab-sim" hidden data-i18n="tab.sim">Simulator</button>
+    <button role="tab" data-tab="settings" class="tab-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span data-i18n="tab.settings">Inställningar</span>
+    </button>
   </nav>
 
   <main>
@@ -54,13 +59,13 @@
 
       <div class="grid-2">
         <div class="card">
-          <h2>Aktiva larm och fel</h2>
+          <h2 data-i18n="ov.active">Aktiva larm och fel</h2>
           <div id="active-list" class="active-list"></div>
         </div>
         <div class="card">
-          <h2>Utgångar</h2>
+          <h2 data-i18n="ov.outputs">Utgångar</h2>
           <div class="relays" id="relays"></div>
-          <h2 class="mt">System</h2>
+          <h2 class="mt" data-i18n="ov.system">System</h2>
           <dl class="kv" id="sysinfo"></dl>
         </div>
       </div>
@@ -71,28 +76,28 @@
       <div class="toolbar">
         <div class="page-chips" id="page-chips"></div>
         <div class="toolbar-right">
-          <button class="btn btn-ghost" id="btn-edit-markers">Redigera markörer</button>
-          <button class="btn btn-ghost" id="btn-add-page">+ Ny bild</button>
+          <button class="btn btn-ghost" id="btn-edit-markers" data-i18n="gr.edit">Redigera markörer</button>
+          <button class="btn btn-ghost" id="btn-add-page" data-i18n="gr.add_page">+ Ny bild</button>
         </div>
       </div>
 
       <form class="card upload" id="upload-form" hidden>
-        <h2>Ladda upp bild</h2>
-        <label>Namn <input name="name" required placeholder="t.ex. Sektion 2"></label>
-        <label>Bild (foto eller ritning) <input name="file" type="file" accept="image/*" required></label>
+        <h2 data-i18n="gr.upload_title">Ladda upp bild</h2>
+        <label><span data-i18n="gr.name">Namn</span> <input name="name" required data-i18n-ph="gr.name_ph"></label>
+        <label><span data-i18n="gr.file">Bild (foto eller ritning)</span> <input name="file" type="file" accept="image/*" required></label>
         <div class="row">
-          <button class="btn" type="submit">Ladda upp</button>
-          <button class="btn btn-ghost" type="button" id="upload-cancel">Avbryt</button>
+          <button class="btn" type="submit" data-i18n="gr.upload">Ladda upp</button>
+          <button class="btn btn-ghost" type="button" id="upload-cancel" data-i18n="common.cancel">Avbryt</button>
         </div>
       </form>
 
       <div class="edit-hint" id="edit-hint" hidden>
-        Redigeringsläge: tryck på bilden för att placera en markör. Tryck på en markör för att ta bort den.
-        <button class="btn btn-ghost btn-sm" id="btn-delete-page">Ta bort bilden</button>
+        <span data-i18n="gr.edit_hint">Redigeringsläge</span>
+        <button class="btn btn-ghost btn-sm" id="btn-delete-page" data-i18n="gr.delete_page">Ta bort bilden</button>
       </div>
 
       <div class="stage" id="stage">
-        <div class="empty" id="stage-empty">Ingen bild ännu. Tryck på <b>+ Ny bild</b> för att ladda upp ett foto av en sektion.</div>
+        <div class="empty" id="stage-empty" data-i18n="gr.empty">Ingen bild ännu.</div>
         <div class="canvas" id="canvas" hidden>
           <img id="page-img" alt="">
           <div class="spot" id="spot"></div>
@@ -104,51 +109,55 @@
     <!-- ======================= POINTS ======================= -->
     <section class="view" id="view-points">
       <div class="toolbar">
-        <h2 class="inline">Larmpunkter</h2>
+        <h2 class="inline" data-i18n="tab.points">Larmpunkter</h2>
         <div class="toolbar-right">
-          <button class="btn" id="btn-new-point">+ Ny larmpunkt</button>
+          <button class="btn" id="btn-new-point" data-i18n="pt.new">+ Ny larmpunkt</button>
         </div>
       </div>
 
       <form class="card point-form" id="point-form" hidden>
-        <h2 id="point-form-title">Ny larmpunkt</h2>
+        <h2 id="point-form-title"></h2>
         <div class="form-grid">
-          <label>Larm-ID <input name="id" type="number" min="1" max="999" required></label>
-          <label>Linje <input name="line" type="number" min="1" max="4" value="1" required></label>
-          <label>Modul <input name="module" type="number" min="1" max="247" value="1" required></label>
-          <label>Ingång <input name="channel" type="number" min="1" max="4" value="1" required></label>
-          <label class="span-2">Namn <input name="name" maxlength="32" required placeholder="Serviceventil Sektion 2"></label>
-          <label>Sektion <input name="section" type="number" min="1" max="255" value="1"></label>
-          <label>Kategori
+          <label><span data-i18n="f.id">Larm-ID</span> <input name="id" type="number" min="1" max="999" required></label>
+          <label><span data-i18n="f.line">Linje</span> <input name="line" type="number" min="1" max="4" value="1" required></label>
+          <label><span data-i18n="f.module">Modul</span> <input name="module" type="number" min="1" max="247" value="1" required></label>
+          <label><span data-i18n="f.channel">Ingång</span> <input name="channel" type="number" min="1" max="4" value="1" required></label>
+          <label class="span-2"><span data-i18n="f.name">Namn</span> <input name="name" maxlength="32" required data-i18n-ph="f.name_ph"></label>
+          <label><span data-i18n="f.section">Sektion</span> <input name="section" type="number" min="1" max="255" value="1"></label>
+          <label><span data-i18n="f.category">Kategori</span>
             <select name="category">
-              <option value="A">A-larm</option>
-              <option value="B" selected>B-larm</option>
-              <option value="DRIFT">Driftindikering</option>
-              <option value="FAULT">Fel</option>
+              <option value="A" data-i18n="cat.A">A-larm</option>
+              <option value="B" selected data-i18n="cat.B">B-larm</option>
+              <option value="DRIFT" data-i18n="cat.DRIFT">Driftindikering</option>
+              <option value="FAULT" data-i18n="cat.FAULT">Fel</option>
             </select>
           </label>
-          <label>Typ av enhet <select name="device_type" id="device-type"></select></label>
-          <label>Kontakt
-            <select name="contact"><option value="NC">NC (normalt sluten)</option><option value="NO">NO (normalt öppen)</option></select>
+          <label><span data-i18n="f.device_type">Typ av enhet</span> <select name="device_type" id="device-type"></select></label>
+          <label><span data-i18n="f.contact">Kontakt</span>
+            <select name="contact">
+              <option value="NC" data-i18n="contact.NC">NC</option>
+              <option value="NO" data-i18n="contact.NO">NO</option>
+            </select>
           </label>
-          <label>Fördröjning (s) <input name="delay_s" type="number" min="0" max="60" value="0"></label>
-          <label class="span-2">LCD rad 1 <input name="lcd1" maxlength="20" placeholder="SERVICEVENTIL"></label>
-          <label class="span-2">LCD rad 2 <input name="lcd2" maxlength="20" placeholder="SEKTION 2"></label>
+          <label><span data-i18n="f.delay">Fördröjning (s)</span> <input name="delay_s" type="number" min="0" max="60" value="0"></label>
+          <label class="span-2"><span data-i18n="f.lcd1">LCD rad 1</span> <input name="lcd1" maxlength="20" placeholder="SERVICEVENTIL"></label>
+          <label class="span-2"><span data-i18n="f.lcd2">LCD rad 2</span> <input name="lcd2" maxlength="20" placeholder="SEKTION 2"></label>
         </div>
         <p class="hint" id="latch-hint"></p>
         <div class="form-msg" id="point-msg"></div>
         <div class="row">
-          <button class="btn" type="submit">Spara</button>
-          <button class="btn btn-ghost" type="button" id="point-cancel">Avbryt</button>
-          <button class="btn btn-danger" type="button" id="point-delete" hidden>Ta bort</button>
+          <button class="btn" type="submit" data-i18n="common.save">Spara</button>
+          <button class="btn btn-ghost" type="button" id="point-cancel" data-i18n="common.cancel">Avbryt</button>
+          <button class="btn btn-danger" type="button" id="point-delete" hidden data-i18n="common.delete">Ta bort</button>
         </div>
       </form>
 
       <div class="card table-wrap">
         <table class="table" id="points-table">
           <thead><tr>
-            <th>ID</th><th>Adress</th><th>Namn</th><th>Kategori</th><th>Typ</th>
-            <th>Fördr.</th><th>Status</th><th></th>
+            <th data-i18n="th.id">ID</th><th data-i18n="th.address">Adress</th><th data-i18n="f.name">Namn</th>
+            <th data-i18n="f.category">Kategori</th><th data-i18n="th.type">Typ</th>
+            <th data-i18n="th.delay">Fördr.</th><th data-i18n="th.status">Status</th><th></th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -158,14 +167,17 @@
     <!-- ======================= EVENTS ======================= -->
     <section class="view" id="view-events">
       <div class="toolbar">
-        <input type="search" id="event-search" placeholder="Sök händelse eller punkt…">
+        <input type="search" id="event-search" data-i18n-ph="ev.search_ph">
         <div class="toolbar-right">
-          <a class="btn btn-ghost" id="csv-link" href="/api/events.csv">Exportera CSV</a>
+          <a class="btn btn-ghost" id="csv-link" href="/api/events.csv" data-i18n="ev.csv">Exportera CSV</a>
         </div>
       </div>
       <div class="card table-wrap">
         <table class="table" id="events-table">
-          <thead><tr><th>Nr</th><th>Tid</th><th>Händelse</th><th>Källa</th><th>Ändring</th></tr></thead>
+          <thead><tr>
+            <th data-i18n="th.nr">Nr</th><th data-i18n="th.time">Tid</th><th data-i18n="th.event">Händelse</th>
+            <th data-i18n="th.source">Källa</th><th data-i18n="th.change">Ändring</th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -174,19 +186,47 @@
     <!-- ======================= SIMULATOR ======================= -->
     <section class="view" id="view-sim">
       <div class="card">
-        <h2>Simulator</h2>
-        <p class="hint">Här styrs den virtuella centralen. På riktig hårdvara ersätts detta av ingångarna på I/O-modulerna.</p>
+        <h2 data-i18n="tab.sim">Simulator</h2>
+        <p class="hint" data-i18n="sim.hint"></p>
         <div class="row">
-          <label class="switch"><input type="checkbox" id="sim-key"><span></span> Nyckelbrytare i läge TEKNIKER</label>
+          <label class="switch"><input type="checkbox" id="sim-key"><span></span> <span data-i18n="sim.key">Nyckelbrytare i läge TEKNIKER</span></label>
         </div>
       </div>
       <div class="card">
-        <h2>Ingångar</h2>
+        <h2 data-i18n="sim.inputs">Ingångar</h2>
         <div id="sim-inputs" class="sim-inputs"></div>
       </div>
       <div class="card">
-        <h2>Moduler</h2>
+        <h2 data-i18n="sim.modules">Moduler</h2>
         <div id="sim-modules" class="row wrap"></div>
+      </div>
+    </section>
+
+    <!-- ======================= SETTINGS ======================= -->
+    <section class="view" id="view-settings">
+      <div class="settings-lock" id="settings-lock" data-i18n="set.need_key"></div>
+
+      <div class="grid-settings">
+        <div class="card">
+          <h2 data-i18n="set.time_title">Systemtid</h2>
+          <p class="hint" data-i18n="set.time_hint"></p>
+          <div class="clock-label" data-i18n="set.current">Aktuell tid i centralen</div>
+          <div class="clock" id="ctrl-clock">--:--:--</div>
+          <div class="clock-date" id="ctrl-date"></div>
+          <label class="field"><span data-i18n="set.new_time">Ny tid</span>
+            <input type="datetime-local" id="new-time" step="1">
+          </label>
+          <div class="row wrap">
+            <button class="btn" id="btn-set-time" data-i18n="set.apply_time">Ställ in tid</button>
+            <button class="btn btn-ghost" id="btn-sync-time" data-i18n="set.sync">Hämta tid från den här enheten</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="set.lang_title">Språk</h2>
+          <p class="hint" data-i18n="set.lang_hint"></p>
+          <div class="lang-grid" id="lang-grid"></div>
+        </div>
       </div>
     </section>
   </main>

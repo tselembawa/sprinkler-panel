@@ -1,23 +1,22 @@
 "use strict";
 
-// ---------------------------------------------------------------- labels
-const CAT_SV = { A: "A-larm", B: "B-larm", C: "C-larm", DRIFT: "Drift", FAULT: "Fel" };
-const DEVICE_SV = {
-  SERVICEVENTIL: "Serviceventil", UNDERSEKTIONSVENTIL: "Undersektionsventil", LARMVENTIL: "Larmventil", PRESSOSTAT: "Larmpressostat",
-  FLODESVAKT: "Flödesvakt", PUMP_RUN: "Pump i drift", PUMP_FAULT: "Pumpfel",
-  TEMP: "Låg temperatur", GENERIC: "Övrigt",
-};
-const STATE_SV = { NORMAL: "Normal", PENDING: "Fördröjning", ALARM: "Larm", ACKED: "Kvitterat", LATCHED: "Väntar återställning" };
-const FAULT_SV = { OPEN: "Avbrott", SHORT: "Kortslutning", MODULE_LOST: "Modul saknas" };
-const ERR_SV = {
-  OUT_OF_RANGE: "värdet är utanför tillåtet område", DUPLICATE_ID: "larm-ID används redan",
-  DUPLICATE_ADDRESS: "adressen används redan av en annan punkt", INVALID: "ogiltigt val",
-  DELAY_NOT_ALLOWED: "fördröjningen får vara högst 60 s", TOO_LONG: "för lång text (max 20 tecken)",
-};
-const FIELD_SV = {
-  id: "Larm-ID", line: "Linje", module: "Modul", channel: "Ingång", category: "Kategori",
-  device_type: "Typ av enhet", contact: "Kontakt", delay_s: "Fördröjning", lcd1: "LCD rad 1", lcd2: "LCD rad 2",
-};
+// ---------------------------------------------------------------- language
+// All texts live in i18n.json (sv, en, fi, no, da, el). t("key", {vars}) returns the text
+// in the selected language, falling back to Swedish.
+const L = { lang: "sv", dict: null };
+
+function t(key, vars) {
+  const s = (L.dict && ((L.dict.strings[L.lang] || {})[key] ?? L.dict.strings.sv[key])) ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? "")) : s;
+}
+const locale = () => (L.dict ? L.dict.locales[L.lang] : "sv-SE");
+
+function applyStatic() {
+  document.documentElement.lang = L.lang;
+  document.title = t("app.title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+}
 
 // ---------------------------------------------------------------- state
 const S = {
@@ -29,7 +28,7 @@ const S = {
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const addr = (p) => `L${p.line}-M${String(p.module).padStart(2, "0")}-IN${p.channel}`;
-const fmtTime = (t) => new Date(t * 1000).toLocaleString("sv-SE");
+const fmtTime = (ts) => new Date(ts * 1000).toLocaleString(locale(), { hourCycle: "h23" });
 
 async function api(path, opts = {}) {
   const o = { ...opts };
@@ -51,13 +50,15 @@ async function api(path, opts = {}) {
 }
 
 function toast(msg, kind = "") {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.className = `toast ${kind}`;
-  t.hidden = false;
+  const el = $("#toast");
+  el.textContent = msg;
+  el.className = `toast ${kind}`;
+  el.hidden = false;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => (t.hidden = true), 3500);
+  toast._t = setTimeout(() => (el.hidden = true), 3500);
 }
+// Server errors carry a code; show it in the selected language.
+const errText = (err) => (err.data && err.data.code && L.dict && L.dict.strings.sv[`errc.${err.data.code}`]) ? t(`errc.${err.data.code}`) : err.message;
 
 function changed(key, value) {
   const s = JSON.stringify(value);
@@ -69,7 +70,7 @@ function changed(key, value) {
 const isTech = () => !!(S.status && S.status.key_tech);
 function requireTech() {
   if (isTech()) return true;
-  toast("Vrid nyckelbrytaren till läge TEKNIKER", "bad");
+  toast(t("need_key"), "bad");
   return false;
 }
 
@@ -78,23 +79,23 @@ const IN_ALARM = new Set(["ALARM", "ACKED", "LATCHED"]);
 
 function visual(p) {
   const rt = p.runtime;
-  if (!rt) return { cls: "", text: "Ej i centralen", rank: 99, active: false };
-  if (!rt.enabled) return { cls: "disabled", text: "Frånkopplad", rank: 80, active: true, kind: "OFF" };
+  if (!rt) return { cls: "", text: t("v.not_in_ctrl"), rank: 99, active: false };
+  if (!rt.enabled) return { cls: "disabled", text: t("v.disabled"), rank: 80, active: true, kind: "OFF" };
   const kind = rt.display_category;
   if (IN_ALARM.has(rt.state)) {
     const unacked = !rt.acked && kind !== "DRIFT";
-    let text = rt.state === "LATCHED" ? "Orsak borta – väntar återställning" : (unacked ? "Larm – ej kvitterat" : "Kvitterat, orsak kvarstår");
-    if (kind === "DRIFT") text = "Aktiv";
-    if (rt.fault) text += ` · ${FAULT_SV[rt.fault]}`;
+    let text = rt.state === "LATCHED" ? t("v.latched") : (unacked ? t("v.unacked") : t("v.acked"));
+    if (kind === "DRIFT") text = t("v.active");
+    if (rt.fault) text += ` · ${t("fault." + rt.fault)}`;
     const rank = { A: 0, FAULT: 2, B: 3, C: 4, DRIFT: 9 }[kind] ?? 5;
     const cls = rt.state === "LATCHED" ? "latched" : `alarm-${kind}${unacked ? " ring" : ""}`;
     return { cls, text, rank: rank + (unacked ? 0 : 0.5), active: true, kind, unacked };
   }
   if (rt.state === "PENDING") {
-    return { cls: "pending", text: `Fördröjning ${Math.ceil(rt.pending_left_s ?? 0)} s`, rank: 6, active: true, kind: "PENDING" };
+    return { cls: "pending", text: t("v.pending", { s: Math.ceil(rt.pending_left_s ?? 0) }), rank: 6, active: true, kind: "PENDING" };
   }
-  if (rt.fault) return { cls: "fault", text: FAULT_SV[rt.fault], rank: 1, active: true, kind: "FAULT", unacked: false };
-  return { cls: "", text: "Normal", rank: 99, active: false };
+  if (rt.fault) return { cls: "fault", text: t("fault." + rt.fault), rank: 1, active: true, kind: "FAULT", unacked: false };
+  return { cls: "", text: t("v.normal"), rank: 99, active: false };
 }
 
 function markerPageFor(pointId) {
@@ -112,7 +113,7 @@ function renderTop() {
   setLed("#led-drift", s.leds.green_power ? "on-green" : "");
 
   const chip = $("#key-chip");
-  chip.textContent = s.key_tech ? "Tekniker" : "Användare";
+  chip.textContent = s.key_tech ? t("key.tech") : t("key.user");
   chip.className = `chip ${s.key_tech ? "tech" : ""}`;
   $("#btn-reset").disabled = !s.key_tech;
 
@@ -149,44 +150,44 @@ function renderStatusBand() {
   const items = S.points.map((p) => ({ p, v: visual(p) })).filter((x) => x.v.active);
   const of = (kind) => items.filter((x) => x.v.kind === kind);
   const lost = s.lost_modules || [];
-  const hint = s.buzzer ? "Tryck Kvittera" : "";
+  const hint = s.buzzer ? t("band.press_ack") : "";
 
   const fire = of("A");
   if (s.relays.K1_A || fire.length) {
     const unacked = fire.some((x) => x.v.unacked) || items.some((x) => x.p.category === "A" && x.p.runtime && x.p.runtime.state === "LATCHED" && !x.p.runtime.acked);
     const latchedOnly = fire.length && fire.every((x) => x.p.runtime.state === "LATCHED");
-    setBand("fire", "fire", "Brandlarm",
-      `${namesOf(fire)}${latchedOnly ? " – orsak borta, väntar återställning" : " – vattenflöde i sprinklersystemet"}`,
-      unacked ? "Tryck Kvittera" : (latchedOnly ? "Återställ med nyckel" : "Kvitterat"), unacked);
+    setBand("fire", "fire", t("band.fire"),
+      t(latchedOnly ? "band.fire_latched_sub" : "band.fire_sub", { names: namesOf(fire) }),
+      unacked ? t("band.press_ack") : (latchedOnly ? t("band.reset_key") : t("band.acked")), unacked);
     return;
   }
   const faults = of("FAULT");
   if (faults.length || lost.length || !s.relays.K3_FAULT_OK) {
     const n = faults.length + lost.length;
-    const what = faults.length ? `${namesOf(faults)}: ${faults[0].v.text}` : `Linje ${lost[0][0]}, modul ${lost[0][1]} saknas`;
-    setBand("fault", "warn", n > 1 ? `Fel (${n})` : "Fel", what, hint);
+    const what = faults.length ? `${namesOf(faults)}: ${faults[0].v.text}` : t("band.module_missing", { l: lost[0][0], m: lost[0][1] });
+    setBand("fault", "warn", n > 1 ? `${t("band.fault")} (${n})` : t("band.fault"), what, hint);
     return;
   }
   const b = of("B");
-  if (b.length) { setBand("b", "warn", b.length > 1 ? `B-larm (${b.length})` : "B-larm", namesOf(b), hint, b.some((x) => x.v.unacked)); return; }
+  if (b.length) { setBand("b", "warn", b.length > 1 ? `${t("cat.B")} (${b.length})` : t("cat.B"), namesOf(b), hint, b.some((x) => x.v.unacked)); return; }
   const c = of("C");
-  if (c.length) { setBand("c", "info", c.length > 1 ? `C-larm (${c.length})` : "C-larm", `Kvitterat, orsak kvarstår: ${namesOf(c)}`, hint); return; }
+  if (c.length) { setBand("c", "info", c.length > 1 ? `${t("cat.C")} (${c.length})` : t("cat.C"), t("band.c_sub", { names: namesOf(c) }), hint); return; }
   const pending = of("PENDING");
-  if (pending.length) { setBand("pending", "info", "Fördröjning pågår", `${namesOf(pending)} – ${pending[0].v.text.toLowerCase()}`, hint); return; }
+  if (pending.length) { setBand("pending", "info", t("band.pending"), `${namesOf(pending)} – ${pending[0].v.text.toLowerCase()}`, hint); return; }
   const off = of("OFF");
-  if (off.length) { setBand("off", "info", "Frånkopplad punkt", `${off.length} punkt(er) frånkopplade: ${namesOf(off)}`, hint); return; }
-  if (!s.config_in_sync) { setBand("off", "info", "Kontrollera konfiguration", "Centralen kör en annan konfiguration än den sparade", hint); return; }
-  setBand("ok", "ok", "Allt normalt", `Inga larm eller fel · ${S.points.length} larmpunkter övervakas`, hint);
+  if (off.length) { setBand("off", "info", t("band.off"), t("band.off_sub", { n: off.length, names: namesOf(off) }), hint); return; }
+  if (!s.config_in_sync) { setBand("off", "info", t("band.unsync"), t("band.unsync_sub"), hint); return; }
+  setBand("ok", "ok", t("band.ok"), t("band.ok_sub", { n: S.points.length }), hint);
 }
 
 // ---------------------------------------------------------------- overview
 function renderOverview() {
   const c = S.status.counts;
   const tiles = [
-    ["a", "A-larm", c.A], ["b", "B-larm", c.B], ["c", "C-larm", c.C],
-    ["f", "Fel", c.FAULT], ["d", "Driftindikering", c.DRIFT], ["o", "Frånkopplade", c.DISABLED],
+    ["a", t("cat.A"), c.A], ["b", t("cat.B"), c.B], ["c", t("cat.C"), c.C],
+    ["f", t("cat.FAULT"), c.FAULT], ["d", t("cat.DRIFT"), c.DRIFT], ["o", t("ov.tile_off"), c.DISABLED],
   ];
-  if (changed("summary", c)) {
+  if (changed("summary", [c, L.lang])) {
     $("#summary").innerHTML = tiles.map(([k, l, n]) =>
       `<div class="tile ${k} ${n ? "hot" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   }
@@ -198,35 +199,37 @@ function renderOverview() {
   if (changed("active", key)) {
     const rows = items.map(({ p, v }) => {
       const k = v.kind === "PENDING" ? "B" : v.kind === "OFF" ? "OFF" : v.kind;
-      const label = v.kind === "PENDING" ? "…" : v.kind === "OFF" ? "–" : (k === "FAULT" ? "FEL" : k === "DRIFT" ? "D" : k);
+      const label = v.kind === "PENDING" ? "…" : v.kind === "OFF" ? "–" : (k === "FAULT" ? t("short.fault") : k === "DRIFT" ? t("short.drift") : k);
       return `<div class="alarm-row k-${k} ${v.unacked ? "unacked" : ""}" data-point="${p.id}">
         <div class="cat">${esc(label)}</div>
-        <div><div class="name">${esc(p.name)}</div><div class="sub">${p.id} · ${addr(p)} · ${esc(DEVICE_SV[p.device_type] || p.device_type)}</div></div>
+        <div><div class="name">${esc(p.name)}</div><div class="sub">${p.id} · ${addr(p)} · ${esc(t("dev." + p.device_type))}</div></div>
         <div class="st">${esc(v.text)}</div></div>`;
     });
     for (const [line, mod] of lost) {
-      rows.unshift(`<div class="alarm-row k-FAULT unacked"><div class="cat">FEL</div>
-        <div><div class="name">Modul saknas</div><div class="sub">Linje ${line}, modul ${mod}</div></div>
-        <div class="st">Ingen kommunikation</div></div>`);
+      rows.unshift(`<div class="alarm-row k-FAULT unacked"><div class="cat">${t("short.fault")}</div>
+        <div><div class="name">${t("fault.MODULE_LOST")}</div><div class="sub">${t("ov.line_module", { l: line, m: mod })}</div></div>
+        <div class="st">${t("ov.no_comm")}</div></div>`);
     }
-    $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">Inga aktiva larm eller fel. Systemet är i normalläge.</div>`;
+    $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">${t("ov.empty")}</div>`;
   }
 
   const r = S.status.relays;
+  const on = (cls) => `<span class="state on ${cls}">${t("relay.active")}</span>`, idle = `<span class="state">${t("relay.idle")}</span>`;
   const relayRows = [
-    ["K1", "A-summalarm", r.K1_A ? `<span class="state on red">Aktiv</span>` : `<span class="state">Vila</span>`],
-    ["K2", "B-summalarm", r.K2_B ? `<span class="state on">Aktiv</span>` : `<span class="state">Vila</span>`],
-    ["K3", "Fel (felsäker)", r.K3_FAULT_OK ? `<span class="state ok">OK – dragen</span>` : `<span class="state bad">Fel – släppt</span>`],
-    ["K4", "C-summalarm", r.K4_C ? `<span class="state on">Aktiv</span>` : `<span class="state">Vila</span>`],
+    ["K1", t("relay.k1"), r.K1_A ? on("red") : idle],
+    ["K2", t("relay.k2"), r.K2_B ? on("") : idle],
+    ["K3", t("relay.k3"), r.K3_FAULT_OK ? `<span class="state ok">${t("relay.ok")}</span>` : `<span class="state bad">${t("relay.bad")}</span>`],
+    ["K4", t("relay.k4"), r.K4_C ? on("") : idle],
   ];
-  if (changed("relays", r)) {
+  if (changed("relays", [r, L.lang])) {
     $("#relays").innerHTML = relayRows.map(([k, l, st]) => `<div class="relay"><span><b>${k}</b> ${l}</span>${st}</div>`).join("");
   }
   const s = S.status;
   const info = [
-    ["Centralen", s.firmware], ["Konfiguration", `v${s.config_version} · ${s.config_crc}`],
-    ["Synkroniserad", s.config_in_sync ? "Ja" : "Nej"], ["Summer", s.buzzer ? "På" : "Av"],
-    ["Senaste händelse", `#${s.last_event_seq}`], ["Drifttid", `${Math.floor(s.uptime_s / 60)} min`],
+    [t("sys.ctrl"), s.firmware], [t("sys.config"), `v${s.config_version} · ${s.config_crc}`],
+    [t("sys.synced"), s.config_in_sync ? t("common.yes") : t("common.no")], [t("sys.buzzer"), s.buzzer ? t("common.on") : t("common.off")],
+    [t("sys.last"), `#${s.last_event_seq}`], [t("sys.uptime"), `${Math.floor(s.uptime_s / 60)} min`],
+    [t("sys.time"), s.time ? fmtTime(s.time) : "–"],
   ];
   if (changed("sysinfo", info)) {
     $("#sysinfo").innerHTML = info.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
@@ -277,7 +280,7 @@ function renderGraphics() {
   $("#canvas").hidden = !pg;
   $("#edit-hint").hidden = !(S.editing && pg);
   $("#canvas").classList.toggle("editing", S.editing);
-  $("#btn-edit-markers").textContent = S.editing ? "Klar" : "Redigera markörer";
+  $("#btn-edit-markers").textContent = S.editing ? t("gr.done") : t("gr.edit");
   if (!pg) return;
 
   const img = $("#page-img");
@@ -285,18 +288,18 @@ function renderGraphics() {
 
   const markers = pg.markers.map((m) => {
     const p = S.points.find((x) => x.id === m.point_id);
-    const v = p ? visual(p) : { cls: "disabled", text: "Okänd punkt" };
+    const v = p ? visual(p) : { cls: "disabled", text: t("gr.unknown_point") };
     return { m, p, v, kind: markerKind(p, v) };
   });
   const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0;
-  const key = [pg.id, S.editing, ratio, markers.map(({ m, v, kind }) => [m.id, m.x, m.y, kind, v.text, v.unacked])];
+  const key = [pg.id, S.editing, ratio, L.lang, markers.map(({ m, v, kind }) => [m.id, m.x, m.y, kind, v.text, v.unacked])];
   if (!changed("canvas", key)) return;
 
   const sides = placeTags(markers.filter((x) => S.editing || SPOT_KINDS.has(x.kind) || x.kind === "pending" || x.kind === "DRIFT"));
   $("#markers").innerHTML = markers.map(({ m, p, v, kind }) => {
     const alarm = SPOT_KINDS.has(kind) || kind === "pending" || kind === "DRIFT";
     const side = sides.get(m.id) || "ru";
-    const name = p ? p.name : `Punkt ${m.point_id}`;
+    const name = p ? p.name : t("gr.point", { id: m.point_id });
     let tag = "";
     if (S.editing) {
       tag = `<span class="mk-tag edit ${side}"><b>${p ? p.id + " " : ""}${esc(name)}</b></span>`;
@@ -415,13 +418,13 @@ $("#upload-form").addEventListener("submit", async (e) => {
     S.pageId = res.id;
     S.editing = true;
     await loadPages();
-    toast("Bilden är uppladdad. Tryck på bilden för att placera markörer.", "ok");
-  } catch (err) { toast(err.message, "bad"); }
+    toast(t("gr.uploaded"), "ok");
+  } catch (err) { toast(errText(err), "bad"); }
 });
 
 $("#btn-delete-page").addEventListener("click", async () => {
   const pg = S.pages.find((p) => p.id === S.pageId);
-  if (!pg || !confirm(`Ta bort bilden "${pg.name}" och alla dess markörer?`)) return;
+  if (!pg || !confirm(t("gr.confirm_delete_page", { name: pg.name }))) return;
   await api(`/api/pages/${pg.id}`, { method: "DELETE" });
   S.pageId = null;
   await loadPages();
@@ -432,23 +435,23 @@ $("#page-img").addEventListener("click", (e) => {
   const r = e.target.getBoundingClientRect();
   const x = (e.clientX - r.left) / r.width;
   const y = (e.clientY - r.top) / r.height;
-  if (!S.points.length) { toast("Skapa först en larmpunkt under Larmpunkter", "bad"); return; }
+  if (!S.points.length) { toast(t("gr.need_point"), "bad"); return; }
   const used = new Set((S.pages.find((p) => p.id === S.pageId)?.markers || []).map((m) => m.point_id));
   const options = S.points.map((p) =>
-    `<option value="${p.id}" ${used.has(p.id) ? "disabled" : ""}>${p.id} – ${esc(p.name)}${used.has(p.id) ? " (finns redan)" : ""}</option>`).join("");
+    `<option value="${p.id}" ${used.has(p.id) ? "disabled" : ""}>${p.id} – ${esc(p.name)}${used.has(p.id) ? " " + t("gr.exists") : ""}</option>`).join("");
   showPopover(e.clientX, e.clientY, `
-    <h3>Ny markör</h3>
-    <label class="hint">Larmpunkt</label>
+    <h3>${t("gr.new_marker")}</h3>
+    <label class="hint">${t("gr.point_label")}</label>
     <select id="pop-point" style="width:100%;margin:6px 0 12px">${options}</select>
-    <div class="row"><button class="btn btn-sm" id="pop-place">Placera</button>
-    <button class="btn btn-ghost btn-sm" id="pop-cancel">Avbryt</button></div>`);
+    <div class="row"><button class="btn btn-sm" id="pop-place">${t("gr.place")}</button>
+    <button class="btn btn-ghost btn-sm" id="pop-cancel">${t("common.cancel")}</button></div>`);
   $("#pop-cancel").onclick = hidePopover;
   $("#pop-place").onclick = async () => {
     try {
       await api(`/api/pages/${S.pageId}/markers`, { json: { x, y, point_id: Number($("#pop-point").value) } });
       hidePopover();
       await loadPages();
-    } catch (err) { toast(err.message, "bad"); }
+    } catch (err) { toast(errText(err), "bad"); }
   };
 });
 
@@ -459,7 +462,7 @@ $("#markers").addEventListener("click", async (e) => {
   e.stopPropagation();
   const p = S.points.find((x) => x.id === Number(el.dataset.point));
   if (S.editing) {
-    if (confirm(`Ta bort markören för ${p ? p.name : "punkten"}?`)) {
+    if (confirm(t("gr.confirm_delete_marker", { name: p ? p.name : "?" }))) {
       await api(`/api/markers/${el.dataset.marker}`, { method: "DELETE" });
       await loadPages();
     }
@@ -471,14 +474,14 @@ $("#markers").addEventListener("click", async (e) => {
   showPopover(e.clientX, e.clientY, `
     <h3>${esc(p.name)}</h3>
     <dl class="kv">
-      <dt>Larm-ID</dt><dd>${p.id}</dd>
-      <dt>Adress</dt><dd>${addr(p)}</dd>
-      <dt>Typ</dt><dd>${esc(DEVICE_SV[p.device_type])}</dd>
-      <dt>Kategori</dt><dd>${esc(CAT_SV[rt.display_category] || p.category)}</dd>
-      <dt>Status</dt><dd>${esc(v.text)}</dd>
-      <dt>Sektion</dt><dd>${p.section}</dd>
+      <dt>${t("f.id")}</dt><dd>${p.id}</dd>
+      <dt>${t("th.address")}</dt><dd>${addr(p)}</dd>
+      <dt>${t("th.type")}</dt><dd>${esc(t("dev." + p.device_type))}</dd>
+      <dt>${t("f.category")}</dt><dd>${esc(t("cat." + (rt.display_category || p.category)))}</dd>
+      <dt>${t("th.status")}</dt><dd>${esc(v.text)}</dd>
+      <dt>${t("f.section")}</dt><dd>${p.section}</dd>
     </dl>
-    <button class="btn btn-ghost btn-sm" id="pop-close">Stäng</button>`);
+    <button class="btn btn-ghost btn-sm" id="pop-close">${t("common.close")}</button>`);
   $("#pop-close").onclick = hidePopover;
 });
 
@@ -495,7 +498,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") hidePopove
 
 // ---------------------------------------------------------------- points
 function renderPointsTable() {
-  const key = S.points.map((p) => [p, visual(p).text, isTech()]);
+  const key = [L.lang, S.points.map((p) => [p, visual(p).text, isTech()])];
   if (!changed("ptable", key)) return;
   const tech = isTech();
   $("#points-table tbody").innerHTML = S.points.length ? S.points.map((p) => {
@@ -504,26 +507,26 @@ function renderPointsTable() {
     const enabled = p.runtime ? p.runtime.enabled : true;
     return `<tr>
       <td>${p.id}</td><td>${addr(p)}</td><td>${esc(p.name)}</td>
-      <td><span class="tag ${p.category}">${CAT_SV[p.category]}</span>${p.latching ? ` <span class="tag latch" title="Låsande – kräver återställning">Låsande</span>` : ""}</td>
-      <td>${esc(DEVICE_SV[p.device_type])}</td><td>${p.delay_s ? p.delay_s + " s" : "–"}</td>
+      <td><span class="tag ${p.category}">${t("cat." + p.category)}</span>${p.latching ? ` <span class="tag latch" title="${t("pt.latching_title")}">${t("pt.latching")}</span>` : ""}</td>
+      <td>${esc(t("dev." + p.device_type))}</td><td>${p.delay_s ? p.delay_s + " s" : "–"}</td>
       <td><span class="status-text ${sc}">${esc(v.text)}</span></td>
       <td class="row">
-        <button class="btn btn-ghost btn-sm" data-edit="${p.id}" ${tech ? "" : "disabled"}>Ändra</button>
-        <button class="btn btn-ghost btn-sm" data-toggle="${p.id}" data-disable="${enabled ? 1 : 0}" ${tech ? "" : "disabled"}>${enabled ? "Koppla från" : "Koppla till"}</button>
+        <button class="btn btn-ghost btn-sm" data-edit="${p.id}" ${tech ? "" : "disabled"}>${t("pt.edit")}</button>
+        <button class="btn btn-ghost btn-sm" data-toggle="${p.id}" data-disable="${enabled ? 1 : 0}" ${tech ? "" : "disabled"}>${enabled ? t("pt.disable") : t("pt.enable")}</button>
       </td></tr>`;
-  }).join("") : `<tr><td colspan="8" class="empty">Inga larmpunkter ännu.</td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="empty">${t("pt.empty")}</td></tr>`;
 }
 
 function fillDeviceTypes() {
-  $("#device-type").innerHTML = S.meta.device_types.map((d) => `<option value="${d}">${DEVICE_SV[d] || d}</option>`).join("");
+  const sel = $("#device-type"), cur = sel.value;
+  sel.innerHTML = S.meta.device_types.map((d) => `<option value="${d}">${esc(t("dev." + d))}</option>`).join("");
+  if (cur) sel.value = cur;
 }
 
 function updateLatchHint() {
   const f = $("#point-form");
   const latching = S.meta.latching_device_types.includes(f.elements.namedItem("device_type").value);
-  $("#latch-hint").textContent = latching
-    ? "Låsande larm (brandlarm): ligger kvar tills någon återställer med nyckel, även om orsaken försvinner."
-    : "Återgår automatiskt till normal när orsaken försvinner.";
+  $("#latch-hint").textContent = latching ? t("pt.latch_yes") : t("pt.latch_no");
 }
 
 function openPointForm(p) {
@@ -534,13 +537,13 @@ function openPointForm(p) {
   $("#point-msg").className = "form-msg";
   if (p) {
     for (const k of ["id", "line", "module", "channel", "name", "lcd1", "lcd2", "category", "device_type", "contact", "delay_s", "section"]) f.elements.namedItem(k).value = p[k];
-    $("#point-form-title").textContent = `Ändra larmpunkt ${p.id}`;
+    $("#point-form-title").textContent = t("pt.form_edit", { id: p.id });
     S.editOriginalId = p.id;
   } else {
     const used = new Set(S.points.map((x) => x.id));
     let id = 1; while (used.has(id)) id++;
     f.elements.namedItem("id").value = id;
-    $("#point-form-title").textContent = "Ny larmpunkt";
+    $("#point-form-title").textContent = t("pt.form_new");
     S.editOriginalId = null;
   }
   $("#point-delete").hidden = !p;
@@ -561,7 +564,7 @@ $("#points-table").addEventListener("click", async (e) => {
     try {
       await api("/api/cmd/disable", { json: { point_id: Number(tg.dataset.toggle), disabled: tg.dataset.disable === "1" } });
       await refresh();
-    } catch (err) { toast(err.message, "bad"); }
+    } catch (err) { toast(errText(err), "bad"); }
   }
 });
 
@@ -570,36 +573,36 @@ $("#point-form").addEventListener("submit", async (e) => {
   const f = e.target;
   const body = Object.fromEntries(new FormData(f).entries());
   const msg = $("#point-msg");
-  msg.className = "form-msg"; msg.textContent = "Skickar till centralen…";
+  msg.className = "form-msg"; msg.textContent = t("pt.sending");
   const q = S.editOriginalId ? `?original_id=${S.editOriginalId}` : "";
   try {
     const res = await api(`/api/points${q}`, { json: body });
     msg.className = "form-msg ok";
-    msg.textContent = `Sparad i centralen ✓  (konfiguration v${res.version}, CRC ${res.crc})`;
+    msg.textContent = t("pt.saved", { v: res.version, crc: res.crc });
     S.editOriginalId = Number(body.id);
     $("#point-delete").hidden = false;
     await refresh();
   } catch (err) {
     msg.className = "form-msg bad";
     if (err.data && err.data.errors) {
-      msg.textContent = "Ej sparad – centralen avvisade:\n" + err.data.errors.map((x) =>
-        `• Punkt ${x.point_id}: ${FIELD_SV[x.field] || x.field} – ${ERR_SV[x.code] || x.code}`).join("\n");
+      msg.textContent = t("pt.rejected") + "\n" + err.data.errors.map((x) =>
+        t("pt.err_line", { id: x.point_id, field: t(x.field === "delay_s" ? "f.delay_s" : "f." + x.field), err: t("err." + x.code) })).join("\n");
     } else {
-      msg.textContent = `Ej sparad – ${err.message}`;
+      msg.textContent = t("pt.not_saved", { msg: errText(err) });
     }
   }
 });
 
 $("#point-delete").addEventListener("click", async () => {
   const id = S.editOriginalId;
-  if (!id || !confirm(`Ta bort larmpunkt ${id}?`)) return;
+  if (!id || !confirm(t("pt.confirm_delete", { id }))) return;
   try {
     await api(`/api/points/${id}`, { method: "DELETE" });
     $("#point-form").hidden = true;
-    toast(`Larmpunkt ${id} borttagen`, "ok");
+    toast(t("pt.deleted", { id }), "ok");
     await refresh();
     await loadPages();
-  } catch (err) { toast(err.message, "bad"); }
+  } catch (err) { toast(errText(err), "bad"); }
 });
 
 // ---------------------------------------------------------------- events
@@ -607,13 +610,14 @@ async function loadEvents() {
   const q = $("#event-search").value.trim();
   $("#csv-link").href = `/api/events.csv${q ? `?q=${encodeURIComponent(q)}` : ""}`;
   const rows = await api(`/api/events?limit=300${q ? `&q=${encodeURIComponent(q)}` : ""}`);
-  if (!changed("events", rows)) return;
+  if (!changed("events", [rows, L.lang])) return;
   $("#events-table tbody").innerHTML = rows.length ? rows.map((r) => {
     const src = r.source_kind === "POINT" ? `${r.source_id} ${esc(r.point_name || "")}`
-      : r.source_kind === "MODULE" ? `Linje ${Math.floor(r.source_id / 1000)}, modul ${r.source_id % 1000}` : "System";
-    const ch = r.old || r.new ? `${esc(STATE_SV[r.old] || r.old || "")} → ${esc(STATE_SV[r.new] || r.new || "")}` : "";
-    return `<tr><td>${r.seq}</td><td>${fmtTime(r.time)}</td><td>${esc(r.label)}</td><td>${src}</td><td>${ch}</td></tr>`;
-  }).join("") : `<tr><td colspan="5" class="empty">Inga händelser.</td></tr>`;
+      : r.source_kind === "MODULE" ? t("ov.line_module", { l: Math.floor(r.source_id / 1000), m: r.source_id % 1000 }) : t("ev.system");
+    const st = (x) => (r.type === "TIME_SET" && x ? fmtTime(Number(x)) : (x && L.dict.strings.sv["state." + x] ? t("state." + x) : x || ""));
+    const ch = r.old || r.new ? `${esc(st(r.old))} → ${esc(st(r.new))}` : "";
+    return `<tr><td>${r.seq}</td><td>${fmtTime(r.time)}</td><td>${esc(t("ev.type." + r.type) === "ev.type." + r.type ? r.type : t("ev.type." + r.type))}</td><td>${src}</td><td>${ch}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">${t("ev.empty")}</td></tr>`;
 }
 let evTimer;
 $("#event-search").addEventListener("input", () => { clearTimeout(evTimer); evTimer = setTimeout(loadEvents, 300); });
@@ -622,22 +626,22 @@ $("#event-search").addEventListener("input", () => { clearTimeout(evTimer); evTi
 function renderSim() {
   if (!S.meta.simulator) return;
   $("#sim-key").checked = isTech();
-  const key = S.points.map((p) => [p.id, p.name, p.runtime && p.runtime.condition]);
+  const key = [L.lang, S.points.map((p) => [p.id, p.name, p.runtime && p.runtime.condition])];
   if (changed("sim", key)) {
-    const conds = [["NORMAL", "Normal", ""], ["ACTIVE", "Aktiv", "active-btn"], ["OPEN", "Avbrott", "fault-btn"], ["SHORT", "Kortslutning", "fault-btn"]];
+    const conds = [["NORMAL", t("cond.NORMAL"), ""], ["ACTIVE", t("cond.ACTIVE"), "active-btn"], ["OPEN", t("cond.OPEN"), "fault-btn"], ["SHORT", t("cond.SHORT"), "fault-btn"]];
     $("#sim-inputs").innerHTML = S.points.length ? S.points.map((p) => {
       const cur = p.runtime ? p.runtime.condition : "NORMAL";
       return `<div class="sim-row"><div><b>${p.id}</b> ${esc(p.name)} <span class="hint">${addr(p)}</span></div>
         <div class="seg">${conds.map(([c, l, cls]) =>
           `<button class="${cur === c ? "on " + cls : ""}" data-sim-point="${p.id}" data-cond="${c}">${l}</button>`).join("")}</div></div>`;
-    }).join("") : `<div class="empty">Skapa larmpunkter först.</div>`;
+    }).join("") : `<div class="empty">${t("sim.empty")}</div>`;
   }
   const mods = [...new Map(S.points.map((p) => [`${p.line}-${p.module}`, [p.line, p.module]])).values()];
   const lost = new Set((S.status.lost_modules || []).map(([l, m]) => `${l}-${m}`));
-  if (changed("simmods", [mods, [...lost]])) {
+  if (changed("simmods", [mods, [...lost], L.lang])) {
     $("#sim-modules").innerHTML = mods.length ? mods.map(([l, m]) =>
-      `<label class="switch"><input type="checkbox" data-sim-module="${l}-${m}" ${lost.has(`${l}-${m}`) ? "checked" : ""}><span></span> L${l}-M${m} saknas</label>`).join("")
-      : `<div class="hint">Inga moduler.</div>`;
+      `<label class="switch"><input type="checkbox" data-sim-module="${l}-${m}" ${lost.has(`${l}-${m}`) ? "checked" : ""}><span></span> ${t("sim.module_missing", { l, m })}</label>`).join("")
+      : `<div class="hint">${t("sim.no_modules")}</div>`;
   }
 }
 
@@ -663,18 +667,18 @@ $("#sim-key").addEventListener("change", async (e) => {
 
 // ---------------------------------------------------------------- commands
 $("#btn-ack").addEventListener("click", async () => {
-  try { await api("/api/cmd/ack", { json: {} }); await refresh(); } catch (err) { toast(err.message, "bad"); }
+  try { await api("/api/cmd/ack", { json: {} }); await refresh(); } catch (err) { toast(errText(err), "bad"); }
 });
 $("#btn-reset").addEventListener("click", async () => {
   try {
     const res = await api("/api/cmd/reset", { json: {} });
     if (res.cause_remains && res.cause_remains.length) {
-      toast(`Kan inte återställa ${res.cause_remains.join(", ")}: orsaken kvarstår`, "bad");
+      toast(t("cmd.cannot_reset", { ids: res.cause_remains.join(", ") }), "bad");
     } else {
-      toast(res.reset.length ? `Återställt: ${res.reset.join(", ")}` : "Inget att återställa", "ok");
+      toast(res.reset.length ? t("cmd.reset_done", { ids: res.reset.join(", ") }) : t("cmd.nothing"), "ok");
     }
     await refresh();
-  } catch (err) { toast(err.message, "bad"); }
+  } catch (err) { toast(errText(err), "bad"); }
 });
 
 // ---------------------------------------------------------------- tabs
@@ -685,6 +689,7 @@ function showTab(name) {
   hidePopover();
   if (name === "events") loadEvents();
   if (name === "graphics") { S.cache.chips = S.cache.canvas = null; renderGraphics(); }
+  if (name === "settings") renderSettings(true);
 }
 document.querySelector(".tabs").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tab]");
@@ -716,24 +721,96 @@ async function refresh() {
     S.status = status;
     S.points = points;
     if (!status.key_tech && S.editing) S.editing = false;
-    if (!lastStatusOk) toast("Kontakt med servern återställd", "ok");
+    if (!lastStatusOk) toast(t("conn.restored"), "ok");
     lastStatusOk = true;
     renderTop();
     renderOverview();
     renderGraphics();
     renderPointsTable();
     renderSim();
+    renderSettings(false);
     autoShowNewAlarm();
   } catch (err) {
     $("#led-drift").className = "led";
-    setBand("lost", "lost", "Ingen kontakt med centralen", "Statusen kan inte visas – kontrollera centralen och nätverket");
-    if (lastStatusOk) toast("Ingen kontakt med servern", "bad");
+    setBand("lost", "lost", t("band.lost"), t("band.lost_sub"));
+    if (lastStatusOk) toast(t("conn.lost"), "bad");
     lastStatusOk = false;
   }
 }
 
+// ---------------------------------------------------------------- settings
+function renderSettings(force) {
+  if (S.tab !== "settings" && !force) return;
+  const tech = isTech();
+  $("#settings-lock").hidden = tech;
+  $("#btn-set-time").disabled = !tech;
+  $("#btn-sync-time").disabled = !tech;
+  $("#new-time").disabled = !tech;
+  if (S.status && S.status.time) {
+    const d = new Date(S.status.time * 1000);
+    $("#ctrl-clock").textContent = d.toLocaleTimeString(locale(), { hourCycle: "h23" });
+    $("#ctrl-date").textContent = d.toLocaleDateString(locale(), { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    if (force || !$("#new-time").value) $("#new-time").value = toLocalInput(d);
+  }
+  if (changed("langs", [L.lang, tech])) {
+    $("#lang-grid").innerHTML = Object.entries(L.dict.languages).map(([code, name]) =>
+      `<button class="lang-btn ${code === L.lang ? "active" : ""}" data-lang="${code}" ${tech ? "" : "disabled"}>
+        <span class="lang-code">${code.toUpperCase()}</span><span>${esc(name)}</span></button>`).join("");
+  }
+}
+
+function toLocalInput(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+async function setControllerTime(unix) {
+  try {
+    await api("/api/time", { json: { time: unix } });
+    toast(t("set.time_saved"), "ok");
+    await refresh();
+    renderSettings(true);
+  } catch (err) { toast(errText(err), "bad"); }
+}
+$("#btn-set-time").addEventListener("click", () => {
+  const v = $("#new-time").value;
+  const ms = v ? new Date(v).getTime() : NaN;
+  if (Number.isNaN(ms)) { toast(t("errc.BAD_TIME"), "bad"); return; }
+  setControllerTime(ms / 1000);
+});
+$("#btn-sync-time").addEventListener("click", () => setControllerTime(Date.now() / 1000));
+
+$("#lang-grid").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-lang]");
+  if (!b || b.dataset.lang === L.lang) return;
+  try {
+    const res = await api("/api/settings", { json: { language: b.dataset.lang } });
+    setLanguage(res.language);
+    toast(t("set.lang_saved"), "ok");
+  } catch (err) { toast(errText(err), "bad"); }
+});
+
+function setLanguage(lang) {
+  L.lang = L.dict.languages[lang] ? lang : "sv";
+  S.cache = {};
+  applyStatic();
+  fillDeviceTypes();
+  const f = $("#point-form");
+  if (!f.hidden) {
+    updateLatchHint();
+    $("#point-form-title").textContent = S.editOriginalId ? t("pt.form_edit", { id: S.editOriginalId }) : t("pt.form_new");
+  }
+  if (S.status) { renderTop(); renderOverview(); renderGraphics(); renderPointsTable(); renderSim(); }
+  renderSettings(true);
+  if (S.tab === "events") loadEvents();
+}
+
 async function start() {
+  L.dict = await api("/i18n.json");
   S.meta = await api("/api/meta");
+  const settings = await api("/api/settings");
+  L.lang = L.dict.languages[settings.language] ? settings.language : "sv";
+  applyStatic();
   fillDeviceTypes();
   $("#tab-sim").hidden = !S.meta.simulator;
   await refresh();

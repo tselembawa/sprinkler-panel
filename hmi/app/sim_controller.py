@@ -76,15 +76,32 @@ class SimController:
         self._fault_unacked = False
         self._key_tech = False
         self._disabled: set[int] = set()  # runtime disablement (bortkoppling)
+        self._time_offset = 0.0  # simulated RTC: wall clock + offset
         self._started = clock()
         self._event("STARTUP", "SYSTEM", 0)
 
     # ------------------------------------------------------------------ events
     def _event(self, etype, kind, sid, old="", new="", user=0):
         self._seq += 1
-        self._events.append(Event(self._seq, self._wall(), etype, kind, sid, old, new, user))
+        self._events.append(Event(self._seq, self.now(), etype, kind, sid, old, new, user))
         if len(self._events) > self.EVENT_BUFFER:
             del self._events[: len(self._events) - self.EVENT_BUFFER]
+
+    # ------------------------------------------------------------------ clock
+    def now(self) -> float:
+        """Controller time (RTC), Unix seconds UTC."""
+        return self._wall() + self._time_offset
+
+    def set_time(self, unix_time: float, user: int = 0) -> dict:
+        """SET_TIME: set the controller clock. Requires the key switch."""
+        with self._lock:
+            self._require_tech()
+            if not isinstance(unix_time, (int, float)) or not 946684800 <= unix_time <= 4102444800:
+                raise CommandError("BAD_TIME", str(unix_time))
+            old = self.now()
+            self._time_offset = float(unix_time) - self._wall()
+            self._event("TIME_SET", "SYSTEM", 0, old=str(int(old)), new=str(int(unix_time)), user=user)
+            return {"time": self.now()}
 
     # ------------------------------------------------------------ config flow
     def validate(self, points: list[dict]) -> list[dict]:
@@ -351,6 +368,7 @@ class SimController:
                 "config_version": self._cfg.version,
                 "config_crc": self._cfg.crc,
                 "last_event_seq": self._seq,
+                "time": self.now(),
                 "key_tech": self._key_tech,
                 "counts": {"A": a_active, "B": b_unacked, "C": c_active,
                            "DRIFT": drift, "FAULT": faults, "DISABLED": disabled},

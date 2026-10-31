@@ -1,0 +1,281 @@
+"""Builds app/static/i18n.json from the translation table below.
+
+Edit the table, then run from the hmi folder:  python tools/build_i18n.py
+Each row: key -> (sv, en, fi, no, da, el). {name} style placeholders are filled in by the UI.
+"""
+
+import json
+from pathlib import Path
+
+LANGS = ["sv", "en", "fi", "no", "da", "el"]
+NAMES = {"sv": "Svenska", "en": "English", "fi": "Suomi", "no": "Norsk", "da": "Dansk", "el": "Ελληνικά"}
+LOCALES = {"sv": "sv-SE", "en": "en-GB", "fi": "fi-FI", "no": "nb-NO", "da": "da-DK", "el": "el-GR"}
+
+T = {
+    # --- top bar, tabs
+    "app.title": ("Sprinklercentral", "Sprinkler panel", "Sprinklerkeskus", "Sprinklersentral", "Sprinklercentral", "Πίνακας sprinkler"),
+    "led.a": ("A-larm", "A-alarm", "A-hälytys", "A-alarm", "A-alarm", "Συναγερμός A"),
+    "led.bc": ("B/C-larm", "B/C-alarm", "B/C-hälytys", "B/C-alarm", "B/C-alarm", "Συναγερμός B/C"),
+    "led.fault": ("Fel", "Fault", "Vika", "Feil", "Fejl", "Σφάλμα"),
+    "led.drift": ("Drift", "Power", "Käyttö", "Drift", "Drift", "Λειτουργία"),
+    "btn.ack": ("Kvittera", "Acknowledge", "Kuittaa", "Kvitter", "Kvittér", "Αναγνώριση"),
+    "btn.reset": ("Återställ", "Reset", "Palauta", "Tilbakestill", "Nulstil", "Επαναφορά"),
+    "key.tech": ("Tekniker", "Technician", "Huoltaja", "Tekniker", "Tekniker", "Τεχνικός"),
+    "key.user": ("Användare", "User", "Käyttäjä", "Bruker", "Bruger", "Χρήστης"),
+    "need_key": ("Vrid nyckelbrytaren till läge TEKNIKER", "Turn the key switch to TECHNICIAN", "Käännä avainkytkin HUOLTO-asentoon", "Vri nøkkelbryteren til TEKNIKER", "Drej nøglekontakten til TEKNIKER", "Γυρίστε τον κλειδοδιακόπτη στη θέση ΤΕΧΝΙΚΟΣ"),
+    "tab.overview": ("Översikt", "Overview", "Yleiskuva", "Oversikt", "Oversigt", "Επισκόπηση"),
+    "tab.graphics": ("Grafik", "Graphics", "Grafiikka", "Grafikk", "Grafik", "Γραφικά"),
+    "tab.points": ("Larmpunkter", "Alarm points", "Hälytyspisteet", "Alarmpunkter", "Alarmpunkter", "Σημεία συναγερμού"),
+    "tab.events": ("Händelser", "Events", "Tapahtumat", "Hendelser", "Hændelser", "Συμβάντα"),
+    "tab.sim": ("Simulator", "Simulator", "Simulaattori", "Simulator", "Simulator", "Προσομοιωτής"),
+    "tab.settings": ("Inställningar", "Settings", "Asetukset", "Innstillinger", "Indstillinger", "Ρυθμίσεις"),
+
+    # --- common
+    "common.cancel": ("Avbryt", "Cancel", "Peruuta", "Avbryt", "Annuller", "Ακύρωση"),
+    "common.save": ("Spara", "Save", "Tallenna", "Lagre", "Gem", "Αποθήκευση"),
+    "common.delete": ("Ta bort", "Delete", "Poista", "Slett", "Slet", "Διαγραφή"),
+    "common.close": ("Stäng", "Close", "Sulje", "Lukk", "Luk", "Κλείσιμο"),
+    "common.yes": ("Ja", "Yes", "Kyllä", "Ja", "Ja", "Ναι"),
+    "common.no": ("Nej", "No", "Ei", "Nei", "Nej", "Όχι"),
+    "common.on": ("På", "On", "Päällä", "På", "Til", "Ενεργός"),
+    "common.off": ("Av", "Off", "Pois", "Av", "Fra", "Ανενεργός"),
+
+    # --- categories, device types, states, faults
+    "cat.A": ("A-larm", "A-alarm", "A-hälytys", "A-alarm", "A-alarm", "Συναγερμός A"),
+    "cat.B": ("B-larm", "B-alarm", "B-hälytys", "B-alarm", "B-alarm", "Συναγερμός B"),
+    "cat.C": ("C-larm", "C-alarm", "C-hälytys", "C-alarm", "C-alarm", "Συναγερμός C"),
+    "cat.DRIFT": ("Driftindikering", "Operating indication", "Käyttötilan ilmaisu", "Driftsindikering", "Driftsindikering", "Ένδειξη λειτουργίας"),
+    "cat.FAULT": ("Fel", "Fault", "Vika", "Feil", "Fejl", "Σφάλμα"),
+    "short.fault": ("FEL", "FLT", "VIKA", "FEIL", "FEJL", "ΣΦΛ"),
+    "short.drift": ("D", "OP", "K", "D", "D", "Λ"),
+    "dev.SERVICEVENTIL": ("Serviceventil", "Service valve", "Huoltoventtiili", "Serviceventil", "Serviceventil", "Βάνα συντήρησης"),
+    "dev.UNDERSEKTIONSVENTIL": ("Undersektionsventil", "Sub-section valve", "Alalohkoventtiili", "Underseksjonsventil", "Undersektionsventil", "Βάνα υποτομέα"),
+    "dev.LARMVENTIL": ("Larmventil", "Alarm valve", "Hälytysventtiili", "Alarmventil", "Alarmventil", "Βάνα συναγερμού"),
+    "dev.PRESSOSTAT": ("Larmpressostat", "Alarm pressure switch", "Hälytyspainekytkin", "Alarmpressostat", "Alarmpressostat", "Πρεσοστάτης συναγερμού"),
+    "dev.FLODESVAKT": ("Flödesvakt", "Flow switch", "Virtausvahti", "Strømningsvakt", "Flowvagt", "Διακόπτης ροής"),
+    "dev.PUMP_RUN": ("Pump i drift", "Pump running", "Pumppu käynnissä", "Pumpe i drift", "Pumpe i drift", "Αντλία σε λειτουργία"),
+    "dev.PUMP_FAULT": ("Pumpfel", "Pump fault", "Pumppuvika", "Pumpefeil", "Pumpefejl", "Βλάβη αντλίας"),
+    "dev.TEMP": ("Låg temperatur", "Low temperature", "Matala lämpötila", "Lav temperatur", "Lav temperatur", "Χαμηλή θερμοκρασία"),
+    "dev.GENERIC": ("Övrigt", "Other", "Muu", "Annet", "Andet", "Άλλο"),
+    "state.NORMAL": ("Normal", "Normal", "Normaali", "Normal", "Normal", "Κανονικό"),
+    "state.PENDING": ("Fördröjning", "Delay", "Viive", "Forsinkelse", "Forsinkelse", "Καθυστέρηση"),
+    "state.ALARM": ("Larm", "Alarm", "Hälytys", "Alarm", "Alarm", "Συναγερμός"),
+    "state.ACKED": ("Kvitterat", "Acknowledged", "Kuitattu", "Kvittert", "Kvitteret", "Αναγνωρίστηκε"),
+    "state.LATCHED": ("Väntar återställning", "Awaiting reset", "Odottaa palautusta", "Venter på tilbakestilling", "Afventer nulstilling", "Αναμονή επαναφοράς"),
+    "fault.OPEN": ("Avbrott", "Open circuit", "Katkos", "Brudd", "Afbrydelse", "Διακοπή γραμμής"),
+    "fault.SHORT": ("Kortslutning", "Short circuit", "Oikosulku", "Kortslutning", "Kortslutning", "Βραχυκύκλωμα"),
+    "fault.MODULE_LOST": ("Modul saknas", "Module missing", "Moduuli puuttuu", "Modul mangler", "Modul mangler", "Λείπει module"),
+    "cond.NORMAL": ("Normal", "Normal", "Normaali", "Normal", "Normal", "Κανονικό"),
+    "cond.ACTIVE": ("Aktiv", "Active", "Aktiivinen", "Aktiv", "Aktiv", "Ενεργό"),
+    "cond.OPEN": ("Avbrott", "Open circuit", "Katkos", "Brudd", "Afbrydelse", "Διακοπή"),
+    "cond.SHORT": ("Kortslutning", "Short circuit", "Oikosulku", "Kortslutning", "Kortslutning", "Βραχυκύκλωμα"),
+
+    # --- point status texts
+    "v.not_in_ctrl": ("Ej i centralen", "Not in controller", "Ei keskuksessa", "Ikke i sentralen", "Ikke i centralen", "Δεν υπάρχει στον controller"),
+    "v.disabled": ("Frånkopplad", "Disabled", "Poiskytketty", "Frakoblet", "Frakoblet", "Απενεργοποιημένο"),
+    "v.latched": ("Orsak borta – väntar återställning", "Cause cleared – awaiting reset", "Syy poistunut – odottaa palautusta", "Årsak borte – venter på tilbakestilling", "Årsag væk – afventer nulstilling", "Η αιτία έφυγε – αναμονή επαναφοράς"),
+    "v.unacked": ("Larm – ej kvitterat", "Alarm – not acknowledged", "Hälytys – kuittaamatta", "Alarm – ikke kvittert", "Alarm – ikke kvitteret", "Συναγερμός – χωρίς αναγνώριση"),
+    "v.acked": ("Kvitterat, orsak kvarstår", "Acknowledged, cause remains", "Kuitattu, syy jatkuu", "Kvittert, årsak består", "Kvitteret, årsag består", "Αναγνωρίστηκε, η αιτία παραμένει"),
+    "v.active": ("Aktiv", "Active", "Aktiivinen", "Aktiv", "Aktiv", "Ενεργό"),
+    "v.pending": ("Fördröjning {s} s", "Delay {s} s", "Viive {s} s", "Forsinkelse {s} s", "Forsinkelse {s} s", "Καθυστέρηση {s} s"),
+    "v.normal": ("Normal", "Normal", "Normaali", "Normal", "Normal", "Κανονικό"),
+
+    # --- status band
+    "band.press_ack": ("Tryck Kvittera", "Press Acknowledge", "Paina Kuittaa", "Trykk Kvitter", "Tryk Kvittér", "Πατήστε Αναγνώριση"),
+    "band.fire": ("Brandlarm", "Fire alarm", "Palohälytys", "Brannalarm", "Brandalarm", "Συναγερμός πυρκαγιάς"),
+    "band.fire_sub": ("{names} – vattenflöde i sprinklersystemet", "{names} – water flow in the sprinkler system", "{names} – vesivirtaus sprinklerjärjestelmässä", "{names} – vannstrøm i sprinkleranlegget", "{names} – vandflow i sprinkleranlægget", "{names} – ροή νερού στο σύστημα sprinkler"),
+    "band.fire_latched_sub": ("{names} – orsak borta, väntar återställning", "{names} – cause cleared, awaiting reset", "{names} – syy poistunut, odottaa palautusta", "{names} – årsak borte, venter på tilbakestilling", "{names} – årsag væk, afventer nulstilling", "{names} – η αιτία έφυγε, αναμονή επαναφοράς"),
+    "band.reset_key": ("Återställ med nyckel", "Reset with key", "Palauta avaimella", "Tilbakestill med nøkkel", "Nulstil med nøgle", "Επαναφορά με κλειδί"),
+    "band.acked": ("Kvitterat", "Acknowledged", "Kuitattu", "Kvittert", "Kvitteret", "Αναγνωρίστηκε"),
+    "band.fault": ("Fel", "Fault", "Vika", "Feil", "Fejl", "Σφάλμα"),
+    "band.module_missing": ("Linje {l}, modul {m} saknas", "Line {l}, module {m} missing", "Linja {l}, moduuli {m} puuttuu", "Linje {l}, modul {m} mangler", "Linje {l}, modul {m} mangler", "Γραμμή {l}, module {m} λείπει"),
+    "band.c_sub": ("Kvitterat, orsak kvarstår: {names}", "Acknowledged, cause remains: {names}", "Kuitattu, syy jatkuu: {names}", "Kvittert, årsak består: {names}", "Kvitteret, årsag består: {names}", "Αναγνωρίστηκε, η αιτία παραμένει: {names}"),
+    "band.pending": ("Fördröjning pågår", "Delay running", "Viive käynnissä", "Forsinkelse pågår", "Forsinkelse i gang", "Καθυστέρηση σε εξέλιξη"),
+    "band.off": ("Frånkopplad punkt", "Disabled point", "Poiskytketty piste", "Frakoblet punkt", "Frakoblet punkt", "Απενεργοποιημένο σημείο"),
+    "band.off_sub": ("{n} punkt(er) frånkopplade: {names}", "{n} point(s) disabled: {names}", "{n} piste(ttä) poiskytketty: {names}", "{n} punkt(er) frakoblet: {names}", "{n} punkt(er) frakoblet: {names}", "{n} σημείο(α) απενεργοποιημένα: {names}"),
+    "band.unsync": ("Kontrollera konfiguration", "Check configuration", "Tarkista konfiguraatio", "Kontroller konfigurasjon", "Kontrollér konfiguration", "Ελέγξτε τη διαμόρφωση"),
+    "band.unsync_sub": ("Centralen kör en annan konfiguration än den sparade", "The controller runs a different configuration than the saved one", "Keskus käyttää eri konfiguraatiota kuin tallennettu", "Sentralen kjører en annen konfigurasjon enn den lagrede", "Centralen kører en anden konfiguration end den gemte", "Ο controller τρέχει διαφορετική διαμόρφωση από την αποθηκευμένη"),
+    "band.ok": ("Allt normalt", "All normal", "Kaikki normaalisti", "Alt normalt", "Alt normalt", "Όλα κανονικά"),
+    "band.ok_sub": ("Inga larm eller fel · {n} larmpunkter övervakas", "No alarms or faults · {n} alarm points monitored", "Ei hälytyksiä tai vikoja · {n} hälytyspistettä valvonnassa", "Ingen alarmer eller feil · {n} alarmpunkter overvåkes", "Ingen alarmer eller fejl · {n} alarmpunkter overvåges", "Κανένας συναγερμός ή σφάλμα · {n} σημεία υπό επιτήρηση"),
+    "band.lost": ("Ingen kontakt med centralen", "No contact with the controller", "Ei yhteyttä keskukseen", "Ingen kontakt med sentralen", "Ingen kontakt med centralen", "Καμία επικοινωνία με τον πίνακα"),
+    "band.lost_sub": ("Statusen kan inte visas – kontrollera centralen och nätverket", "Status cannot be shown – check the controller and the network", "Tilaa ei voi näyttää – tarkista keskus ja verkko", "Status kan ikke vises – kontroller sentralen og nettverket", "Status kan ikke vises – kontrollér centralen og netværket", "Η κατάσταση δεν μπορεί να εμφανιστεί – ελέγξτε τον πίνακα και το δίκτυο"),
+
+    # --- overview
+    "ov.active": ("Aktiva larm och fel", "Active alarms and faults", "Aktiiviset hälytykset ja viat", "Aktive alarmer og feil", "Aktive alarmer og fejl", "Ενεργοί συναγερμοί και σφάλματα"),
+    "ov.outputs": ("Utgångar", "Outputs", "Lähdöt", "Utganger", "Udgange", "Έξοδοι"),
+    "ov.system": ("System", "System", "Järjestelmä", "System", "System", "Σύστημα"),
+    "ov.tile_off": ("Frånkopplade", "Disabled", "Poiskytketyt", "Frakoblet", "Frakoblet", "Απενεργοποιημένα"),
+    "ov.line_module": ("Linje {l}, modul {m}", "Line {l}, module {m}", "Linja {l}, moduuli {m}", "Linje {l}, modul {m}", "Linje {l}, modul {m}", "Γραμμή {l}, module {m}"),
+    "ov.no_comm": ("Ingen kommunikation", "No communication", "Ei tiedonsiirtoa", "Ingen kommunikasjon", "Ingen kommunikation", "Καμία επικοινωνία"),
+    "ov.empty": ("Inga aktiva larm eller fel. Systemet är i normalläge.", "No active alarms or faults. The system is in normal state.", "Ei aktiivisia hälytyksiä tai vikoja. Järjestelmä on normaalitilassa.", "Ingen aktive alarmer eller feil. Systemet er i normal tilstand.", "Ingen aktive alarmer eller fejl. Systemet er i normal tilstand.", "Κανένας ενεργός συναγερμός ή σφάλμα. Το σύστημα είναι σε κανονική κατάσταση."),
+    "relay.k1": ("A-summalarm", "A common alarm", "A-summahälytys", "A-sumalarm", "A-sumalarm", "Συλλογικός συναγερμός A"),
+    "relay.k2": ("B-summalarm", "B common alarm", "B-summahälytys", "B-sumalarm", "B-sumalarm", "Συλλογικός συναγερμός B"),
+    "relay.k3": ("Fel (felsäker)", "Fault (fail-safe)", "Vika (vikaturvallinen)", "Feil (feilsikker)", "Fejl (fejlsikker)", "Σφάλμα (fail-safe)"),
+    "relay.k4": ("C-summalarm", "C common alarm", "C-summahälytys", "C-sumalarm", "C-sumalarm", "Συλλογικός συναγερμός C"),
+    "relay.active": ("Aktiv", "Active", "Aktiivinen", "Aktiv", "Aktiv", "Ενεργό"),
+    "relay.idle": ("Vila", "Idle", "Lepo", "Hvile", "Hvile", "Ηρεμία"),
+    "relay.ok": ("OK – dragen", "OK – energized", "OK – vetänyt", "OK – trukket", "OK – trukket", "OK – οπλισμένο"),
+    "relay.bad": ("Fel – släppt", "Fault – released", "Vika – päästänyt", "Feil – sluppet", "Fejl – sluppet", "Σφάλμα – έπεσε"),
+    "sys.ctrl": ("Centralen", "Controller", "Keskus", "Sentralen", "Centralen", "Controller"),
+    "sys.config": ("Konfiguration", "Configuration", "Konfiguraatio", "Konfigurasjon", "Konfiguration", "Διαμόρφωση"),
+    "sys.synced": ("Synkroniserad", "In sync", "Synkronoitu", "Synkronisert", "Synkroniseret", "Συγχρονισμένη"),
+    "sys.buzzer": ("Summer", "Buzzer", "Summeri", "Summer", "Summer", "Βομβητής"),
+    "sys.last": ("Senaste händelse", "Latest event", "Viimeisin tapahtuma", "Siste hendelse", "Seneste hændelse", "Τελευταίο συμβάν"),
+    "sys.uptime": ("Drifttid", "Uptime", "Käyntiaika", "Driftstid", "Driftstid", "Χρόνος λειτουργίας"),
+    "sys.time": ("Tid", "Time", "Aika", "Tid", "Tid", "Ώρα"),
+
+    # --- graphics
+    "gr.edit": ("Redigera markörer", "Edit markers", "Muokkaa merkkejä", "Rediger markører", "Redigér markører", "Επεξεργασία δεικτών"),
+    "gr.done": ("Klar", "Done", "Valmis", "Ferdig", "Færdig", "Τέλος"),
+    "gr.add_page": ("+ Ny bild", "+ New image", "+ Uusi kuva", "+ Nytt bilde", "+ Nyt billede", "+ Νέα εικόνα"),
+    "gr.upload_title": ("Ladda upp bild", "Upload image", "Lataa kuva", "Last opp bilde", "Upload billede", "Ανέβασμα εικόνας"),
+    "gr.name": ("Namn", "Name", "Nimi", "Navn", "Navn", "Όνομα"),
+    "gr.name_ph": ("t.ex. Sektion 2", "e.g. Section 2", "esim. Lohko 2", "f.eks. Seksjon 2", "f.eks. Sektion 2", "π.χ. Τομέας 2"),
+    "gr.file": ("Bild (foto eller ritning)", "Image (photo or drawing)", "Kuva (valokuva tai piirustus)", "Bilde (foto eller tegning)", "Billede (foto eller tegning)", "Εικόνα (φωτογραφία ή σχέδιο)"),
+    "gr.upload": ("Ladda upp", "Upload", "Lataa", "Last opp", "Upload", "Ανέβασμα"),
+    "gr.edit_hint": ("Redigeringsläge: tryck på bilden för att placera en markör. Tryck på en markör för att ta bort den.", "Edit mode: tap the image to place a marker. Tap a marker to remove it.", "Muokkaustila: napauta kuvaa lisätäksesi merkin. Napauta merkkiä poistaaksesi sen.", "Redigeringsmodus: trykk på bildet for å plassere en markør. Trykk på en markør for å fjerne den.", "Redigeringstilstand: tryk på billedet for at placere en markør. Tryk på en markør for at fjerne den.", "Λειτουργία επεξεργασίας: πατήστε την εικόνα για να βάλετε δείκτη. Πατήστε έναν δείκτη για να τον αφαιρέσετε."),
+    "gr.delete_page": ("Ta bort bilden", "Delete image", "Poista kuva", "Slett bildet", "Slet billedet", "Διαγραφή εικόνας"),
+    "gr.empty": ("Ingen bild ännu. Tryck på + Ny bild för att ladda upp ett foto av en sektion.", "No image yet. Tap + New image to upload a photo of a section.", "Ei vielä kuvaa. Napauta + Uusi kuva ladataksesi kuvan lohkosta.", "Ingen bilder ennå. Trykk på + Nytt bilde for å laste opp et foto av en seksjon.", "Intet billede endnu. Tryk på + Nyt billede for at uploade et foto af en sektion.", "Δεν υπάρχει εικόνα ακόμα. Πατήστε + Νέα εικόνα για να ανεβάσετε φωτογραφία ενός τομέα."),
+    "gr.unknown_point": ("Okänd punkt", "Unknown point", "Tuntematon piste", "Ukjent punkt", "Ukendt punkt", "Άγνωστο σημείο"),
+    "gr.point": ("Punkt {id}", "Point {id}", "Piste {id}", "Punkt {id}", "Punkt {id}", "Σημείο {id}"),
+    "gr.uploaded": ("Bilden är uppladdad. Tryck på bilden för att placera markörer.", "Image uploaded. Tap the image to place markers.", "Kuva ladattu. Napauta kuvaa lisätäksesi merkkejä.", "Bildet er lastet opp. Trykk på bildet for å plassere markører.", "Billedet er uploadet. Tryk på billedet for at placere markører.", "Η εικόνα ανέβηκε. Πατήστε την εικόνα για να βάλετε δείκτες."),
+    "gr.confirm_delete_page": ("Ta bort bilden \"{name}\" och alla dess markörer?", "Delete the image \"{name}\" and all its markers?", "Poistetaanko kuva \"{name}\" ja kaikki sen merkit?", "Slette bildet \"{name}\" og alle markørene?", "Slet billedet \"{name}\" og alle dets markører?", "Διαγραφή της εικόνας \"{name}\" και όλων των δεικτών της;"),
+    "gr.need_point": ("Skapa först en larmpunkt under Larmpunkter", "First create an alarm point under Alarm points", "Luo ensin hälytyspiste kohdassa Hälytyspisteet", "Opprett først en alarmpunkt under Alarmpunkter", "Opret først et alarmpunkt under Alarmpunkter", "Δημιουργήστε πρώτα ένα σημείο στα Σημεία συναγερμού"),
+    "gr.exists": ("(finns redan)", "(already placed)", "(jo lisätty)", "(finnes allerede)", "(findes allerede)", "(υπάρχει ήδη)"),
+    "gr.new_marker": ("Ny markör", "New marker", "Uusi merkki", "Ny markør", "Ny markør", "Νέος δείκτης"),
+    "gr.point_label": ("Larmpunkt", "Alarm point", "Hälytyspiste", "Alarmpunkt", "Alarmpunkt", "Σημείο συναγερμού"),
+    "gr.place": ("Placera", "Place", "Sijoita", "Plasser", "Placér", "Τοποθέτηση"),
+    "gr.confirm_delete_marker": ("Ta bort markören för {name}?", "Remove the marker for {name}?", "Poistetaanko merkki: {name}?", "Fjerne markøren for {name}?", "Fjern markøren for {name}?", "Αφαίρεση του δείκτη για {name};"),
+
+    # --- points
+    "pt.new": ("+ Ny larmpunkt", "+ New alarm point", "+ Uusi hälytyspiste", "+ Ny alarmpunkt", "+ Nyt alarmpunkt", "+ Νέο σημείο"),
+    "pt.form_new": ("Ny larmpunkt", "New alarm point", "Uusi hälytyspiste", "Ny alarmpunkt", "Nyt alarmpunkt", "Νέο σημείο συναγερμού"),
+    "pt.form_edit": ("Ändra larmpunkt {id}", "Edit alarm point {id}", "Muokkaa hälytyspistettä {id}", "Endre alarmpunkt {id}", "Redigér alarmpunkt {id}", "Επεξεργασία σημείου {id}"),
+    "f.id": ("Larm-ID", "Alarm ID", "Hälytys-ID", "Alarm-ID", "Alarm-ID", "ID συναγερμού"),
+    "f.line": ("Linje", "Line", "Linja", "Linje", "Linje", "Γραμμή"),
+    "f.module": ("Modul", "Module", "Moduuli", "Modul", "Modul", "Module"),
+    "f.channel": ("Ingång", "Input", "Tulo", "Inngang", "Indgang", "Είσοδος"),
+    "f.name": ("Namn", "Name", "Nimi", "Navn", "Navn", "Όνομα"),
+    "f.name_ph": ("Serviceventil Sektion 2", "Service valve Section 2", "Huoltoventtiili Lohko 2", "Serviceventil Seksjon 2", "Serviceventil Sektion 2", "Βάνα συντήρησης Τομέας 2"),
+    "f.section": ("Sektion", "Section", "Lohko", "Seksjon", "Sektion", "Τομέας"),
+    "f.category": ("Kategori", "Category", "Luokka", "Kategori", "Kategori", "Κατηγορία"),
+    "f.device_type": ("Typ av enhet", "Device type", "Laitetyyppi", "Enhetstype", "Enhedstype", "Τύπος συσκευής"),
+    "f.contact": ("Kontakt", "Contact", "Kosketin", "Kontakt", "Kontakt", "Επαφή"),
+    "f.delay": ("Fördröjning (s)", "Delay (s)", "Viive (s)", "Forsinkelse (s)", "Forsinkelse (s)", "Καθυστέρηση (s)"),
+    "f.delay_s": ("Fördröjning", "Delay", "Viive", "Forsinkelse", "Forsinkelse", "Καθυστέρηση"),
+    "f.lcd1": ("LCD rad 1", "LCD line 1", "LCD rivi 1", "LCD linje 1", "LCD linje 1", "LCD γραμμή 1"),
+    "f.lcd2": ("LCD rad 2", "LCD line 2", "LCD rivi 2", "LCD linje 2", "LCD linje 2", "LCD γραμμή 2"),
+    "contact.NC": ("NC (normalt sluten)", "NC (normally closed)", "NC (normaalisti suljettu)", "NC (normalt lukket)", "NC (normalt lukket)", "NC (κανονικά κλειστή)"),
+    "contact.NO": ("NO (normalt öppen)", "NO (normally open)", "NO (normaalisti auki)", "NO (normalt åpen)", "NO (normalt åben)", "NO (κανονικά ανοιχτή)"),
+    "th.id": ("ID", "ID", "ID", "ID", "ID", "ID"),
+    "th.address": ("Adress", "Address", "Osoite", "Adresse", "Adresse", "Διεύθυνση"),
+    "th.type": ("Typ", "Type", "Tyyppi", "Type", "Type", "Τύπος"),
+    "th.delay": ("Fördr.", "Delay", "Viive", "Fors.", "Fors.", "Καθυστ."),
+    "th.status": ("Status", "Status", "Tila", "Status", "Status", "Κατάσταση"),
+    "pt.latching": ("Låsande", "Latching", "Lukittuva", "Låsende", "Låsende", "Μανδαλωμένο"),
+    "pt.latching_title": ("Låsande – kräver återställning", "Latching – requires reset", "Lukittuva – vaatii palautuksen", "Låsende – krever tilbakestilling", "Låsende – kræver nulstilling", "Μανδαλωμένο – απαιτεί επαναφορά"),
+    "pt.edit": ("Ändra", "Edit", "Muokkaa", "Endre", "Redigér", "Επεξεργασία"),
+    "pt.disable": ("Koppla från", "Disable", "Kytke pois", "Koble fra", "Frakobl", "Απενεργοποίηση"),
+    "pt.enable": ("Koppla till", "Enable", "Kytke päälle", "Koble til", "Tilkobl", "Ενεργοποίηση"),
+    "pt.empty": ("Inga larmpunkter ännu.", "No alarm points yet.", "Ei vielä hälytyspisteitä.", "Ingen alarmpunkter ennå.", "Ingen alarmpunkter endnu.", "Δεν υπάρχουν σημεία ακόμα."),
+    "pt.latch_yes": ("Låsande larm (brandlarm): ligger kvar tills någon återställer med nyckel, även om orsaken försvinner.", "Latching alarm (fire alarm): stays until someone resets with the key, even if the cause disappears.", "Lukittuva hälytys (palohälytys): pysyy, kunnes joku palauttaa avaimella, vaikka syy poistuu.", "Låsende alarm (brannalarm): ligger inne til noen tilbakestiller med nøkkel, selv om årsaken forsvinner.", "Låsende alarm (brandalarm): forbliver, indtil nogen nulstiller med nøgle, selv om årsagen forsvinder.", "Μανδαλωμένος συναγερμός (πυρκαγιά): παραμένει μέχρι επαναφορά με κλειδί, ακόμα κι αν φύγει η αιτία."),
+    "pt.latch_no": ("Återgår automatiskt till normal när orsaken försvinner.", "Returns to normal automatically when the cause disappears.", "Palautuu automaattisesti normaaliksi, kun syy poistuu.", "Går automatisk tilbake til normal når årsaken forsvinner.", "Vender automatisk tilbage til normal, når årsagen forsvinder.", "Επιστρέφει αυτόματα σε κανονικό όταν φύγει η αιτία."),
+    "pt.sending": ("Skickar till centralen…", "Sending to the controller…", "Lähetetään keskukseen…", "Sender til sentralen…", "Sender til centralen…", "Αποστολή στον controller…"),
+    "pt.saved": ("Sparad i centralen ✓  (konfiguration v{v}, CRC {crc})", "Saved in the controller ✓  (configuration v{v}, CRC {crc})", "Tallennettu keskukseen ✓  (konfiguraatio v{v}, CRC {crc})", "Lagret i sentralen ✓  (konfigurasjon v{v}, CRC {crc})", "Gemt i centralen ✓  (konfiguration v{v}, CRC {crc})", "Αποθηκεύτηκε στον controller ✓  (διαμόρφωση v{v}, CRC {crc})"),
+    "pt.rejected": ("Ej sparad – centralen avvisade:", "Not saved – the controller rejected:", "Ei tallennettu – keskus hylkäsi:", "Ikke lagret – sentralen avviste:", "Ikke gemt – centralen afviste:", "Δεν αποθηκεύτηκε – ο controller απέρριψε:"),
+    "pt.err_line": ("• Punkt {id}: {field} – {err}", "• Point {id}: {field} – {err}", "• Piste {id}: {field} – {err}", "• Punkt {id}: {field} – {err}", "• Punkt {id}: {field} – {err}", "• Σημείο {id}: {field} – {err}"),
+    "pt.not_saved": ("Ej sparad – {msg}", "Not saved – {msg}", "Ei tallennettu – {msg}", "Ikke lagret – {msg}", "Ikke gemt – {msg}", "Δεν αποθηκεύτηκε – {msg}"),
+    "pt.confirm_delete": ("Ta bort larmpunkt {id}?", "Delete alarm point {id}?", "Poistetaanko hälytyspiste {id}?", "Slette alarmpunkt {id}?", "Slet alarmpunkt {id}?", "Διαγραφή σημείου {id};"),
+    "pt.deleted": ("Larmpunkt {id} borttagen", "Alarm point {id} deleted", "Hälytyspiste {id} poistettu", "Alarmpunkt {id} slettet", "Alarmpunkt {id} slettet", "Το σημείο {id} διαγράφηκε"),
+    "err.OUT_OF_RANGE": ("värdet är utanför tillåtet område", "value is out of range", "arvo on sallitun alueen ulkopuolella", "verdien er utenfor tillatt område", "værdien er uden for det tilladte område", "η τιμή είναι εκτός ορίων"),
+    "err.DUPLICATE_ID": ("larm-ID används redan", "alarm ID is already used", "hälytys-ID on jo käytössä", "alarm-ID brukes allerede", "alarm-ID bruges allerede", "το ID χρησιμοποιείται ήδη"),
+    "err.DUPLICATE_ADDRESS": ("adressen används redan av en annan punkt", "address is already used by another point", "osoite on jo toisen pisteen käytössä", "adressen brukes allerede av et annet punkt", "adressen bruges allerede af et andet punkt", "η διεύθυνση χρησιμοποιείται ήδη από άλλο σημείο"),
+    "err.INVALID": ("ogiltigt val", "invalid choice", "virheellinen valinta", "ugyldig valg", "ugyldigt valg", "μη έγκυρη επιλογή"),
+    "err.DELAY_NOT_ALLOWED": ("fördröjningen får vara högst 60 s", "delay may be at most 60 s", "viive saa olla enintään 60 s", "forsinkelsen kan være maks 60 s", "forsinkelsen må højst være 60 s", "η καθυστέρηση μπορεί να είναι έως 60 s"),
+    "err.TOO_LONG": ("för lång text (max 20 tecken)", "text too long (max 20 characters)", "liian pitkä teksti (enintään 20 merkkiä)", "for lang tekst (maks 20 tegn)", "for lang tekst (maks 20 tegn)", "πολύ μεγάλο κείμενο (έως 20 χαρακτήρες)"),
+
+    # --- server error codes
+    "errc.ACCESS_DENIED": ("Vrid nyckelbrytaren till läge TEKNIKER", "Turn the key switch to TECHNICIAN", "Käännä avainkytkin HUOLTO-asentoon", "Vri nøkkelbryteren til TEKNIKER", "Drej nøglekontakten til TEKNIKER", "Γυρίστε τον κλειδοδιακόπτη στη θέση ΤΕΧΝΙΚΟΣ"),
+    "errc.NO_IMAGE": ("Ingen bild vald", "No image selected", "Kuvaa ei valittu", "Ingen bilde valgt", "Intet billede valgt", "Δεν επιλέχθηκε εικόνα"),
+    "errc.BAD_TYPE": ("Endast JPG, PNG, WEBP eller GIF", "Only JPG, PNG, WEBP or GIF", "Vain JPG, PNG, WEBP tai GIF", "Kun JPG, PNG, WEBP eller GIF", "Kun JPG, PNG, WEBP eller GIF", "Μόνο JPG, PNG, WEBP ή GIF"),
+    "errc.TOO_BIG": ("Bilden är för stor (max 15 MB)", "The image is too large (max 15 MB)", "Kuva on liian suuri (enintään 15 Mt)", "Bildet er for stort (maks 15 MB)", "Billedet er for stort (maks 15 MB)", "Η εικόνα είναι πολύ μεγάλη (έως 15 MB)"),
+    "errc.CRC_MISMATCH": ("Centralen bekräftade inte konfigurationen", "The controller did not confirm the configuration", "Keskus ei vahvistanut konfiguraatiota", "Sentralen bekreftet ikke konfigurasjonen", "Centralen bekræftede ikke konfigurationen", "Ο controller δεν επιβεβαίωσε τη διαμόρφωση"),
+    "errc.BAD_TIME": ("Ogiltig tid", "Invalid time", "Virheellinen aika", "Ugyldig tid", "Ugyldig tid", "Μη έγκυρη ώρα"),
+    "errc.BAD_LANGUAGE": ("Okänt språk", "Unknown language", "Tuntematon kieli", "Ukjent språk", "Ukendt sprog", "Άγνωστη γλώσσα"),
+
+    # --- events
+    "ev.search_ph": ("Sök händelse eller punkt…", "Search event or point…", "Hae tapahtumaa tai pistettä…", "Søk hendelse eller punkt…", "Søg hændelse eller punkt…", "Αναζήτηση συμβάντος ή σημείου…"),
+    "ev.csv": ("Exportera CSV", "Export CSV", "Vie CSV", "Eksporter CSV", "Eksportér CSV", "Εξαγωγή CSV"),
+    "th.nr": ("Nr", "No.", "Nro", "Nr", "Nr", "Α/Α"),
+    "th.time": ("Tid", "Time", "Aika", "Tid", "Tid", "Ώρα"),
+    "th.event": ("Händelse", "Event", "Tapahtuma", "Hendelse", "Hændelse", "Συμβάν"),
+    "th.source": ("Källa", "Source", "Lähde", "Kilde", "Kilde", "Πηγή"),
+    "th.change": ("Ändring", "Change", "Muutos", "Endring", "Ændring", "Αλλαγή"),
+    "th.point": ("Punkt", "Point", "Piste", "Punkt", "Punkt", "Σημείο"),
+    "th.from": ("Från", "From", "Mistä", "Fra", "Fra", "Από"),
+    "th.to": ("Till", "To", "Mihin", "Til", "Til", "Σε"),
+    "ev.system": ("System", "System", "Järjestelmä", "System", "System", "Σύστημα"),
+    "ev.empty": ("Inga händelser.", "No events.", "Ei tapahtumia.", "Ingen hendelser.", "Ingen hændelser.", "Δεν υπάρχουν συμβάντα."),
+    "ev.type.STARTUP": ("Systemstart", "System start", "Järjestelmän käynnistys", "Systemstart", "Systemstart", "Εκκίνηση συστήματος"),
+    "ev.type.CONFIG_ACTIVATED": ("Ny konfiguration aktiverad", "New configuration activated", "Uusi konfiguraatio otettu käyttöön", "Ny konfigurasjon aktivert", "Ny konfiguration aktiveret", "Ενεργοποιήθηκε νέα διαμόρφωση"),
+    "ev.type.DELAY_STARTED": ("Fördröjning startad", "Delay started", "Viive alkoi", "Forsinkelse startet", "Forsinkelse startet", "Ξεκίνησε καθυστέρηση"),
+    "ev.type.DELAY_CANCELLED": ("Fördröjning avbruten", "Delay cancelled", "Viive peruttu", "Forsinkelse avbrutt", "Forsinkelse afbrudt", "Ακυρώθηκε καθυστέρηση"),
+    "ev.type.ALARM_ON": ("Larm", "Alarm", "Hälytys", "Alarm", "Alarm", "Συναγερμός"),
+    "ev.type.ALARM_CLEARED": ("Orsak återställd", "Cause cleared", "Syy poistunut", "Årsak opphørt", "Årsag ophørt", "Η αιτία έφυγε"),
+    "ev.type.LINE_OPEN": ("Avbrott på linje", "Open circuit on line", "Katkos linjassa", "Brudd på linje", "Afbrydelse på linje", "Διακοπή γραμμής"),
+    "ev.type.LINE_SHORT": ("Kortslutning på linje", "Short circuit on line", "Oikosulku linjassa", "Kortslutning på linje", "Kortslutning på linje", "Βραχυκύκλωμα γραμμής"),
+    "ev.type.LINE_OK": ("Linje OK", "Line OK", "Linja OK", "Linje OK", "Linje OK", "Γραμμή OK"),
+    "ev.type.MODULE_LOST": ("Modul saknas", "Module missing", "Moduuli puuttuu", "Modul mangler", "Modul mangler", "Λείπει module"),
+    "ev.type.MODULE_BACK": ("Modul åter", "Module back", "Moduuli palasi", "Modul tilbake", "Modul tilbage", "Το module επανήλθε"),
+    "ev.type.ACK": ("Kvittering", "Acknowledge", "Kuittaus", "Kvittering", "Kvittering", "Αναγνώριση"),
+    "ev.type.RESET": ("Återställning", "Reset", "Palautus", "Tilbakestilling", "Nulstilling", "Επαναφορά"),
+    "ev.type.POINT_DISABLED": ("Punkt frånkopplad", "Point disabled", "Piste poiskytketty", "Punkt frakoblet", "Punkt frakoblet", "Σημείο απενεργοποιήθηκε"),
+    "ev.type.POINT_ENABLED": ("Punkt tillkopplad", "Point enabled", "Piste kytketty", "Punkt tilkoblet", "Punkt tilkoblet", "Σημείο ενεργοποιήθηκε"),
+    "ev.type.TIME_SET": ("Tid ändrad", "Time changed", "Aika muutettu", "Tid endret", "Tid ændret", "Αλλαγή ώρας"),
+    "ev.type.LANGUAGE_SET": ("Språk ändrat", "Language changed", "Kieli vaihdettu", "Språk endret", "Sprog ændret", "Αλλαγή γλώσσας"),
+
+    # --- simulator
+    "sim.hint": ("Här styrs den virtuella centralen. På riktig hårdvara ersätts detta av ingångarna på I/O-modulerna.", "This controls the virtual controller. On real hardware this is replaced by the inputs on the I/O modules.", "Tästä ohjataan virtuaalista keskusta. Oikeassa laitteistossa tämän korvaavat I/O-moduulien tulot.", "Her styres den virtuelle sentralen. På ekte maskinvare erstattes dette av inngangene på I/O-modulene.", "Her styres den virtuelle central. På rigtig hardware erstattes dette af indgangene på I/O-modulerne.", "Εδώ ελέγχεται ο εικονικός controller. Στο πραγματικό hardware τον ρόλο αυτό έχουν οι είσοδοι των I/O modules."),
+    "sim.key": ("Nyckelbrytare i läge TEKNIKER", "Key switch in TECHNICIAN position", "Avainkytkin HUOLTO-asennossa", "Nøkkelbryter i stilling TEKNIKER", "Nøglekontakt i stilling TEKNIKER", "Κλειδοδιακόπτης στη θέση ΤΕΧΝΙΚΟΣ"),
+    "sim.inputs": ("Ingångar", "Inputs", "Tulot", "Innganger", "Indgange", "Είσοδοι"),
+    "sim.modules": ("Moduler", "Modules", "Moduulit", "Moduler", "Moduler", "Modules"),
+    "sim.empty": ("Skapa larmpunkter först.", "Create alarm points first.", "Luo ensin hälytyspisteet.", "Opprett alarmpunkter først.", "Opret alarmpunkter først.", "Δημιουργήστε πρώτα σημεία."),
+    "sim.no_modules": ("Inga moduler.", "No modules.", "Ei moduuleja.", "Ingen moduler.", "Ingen moduler.", "Δεν υπάρχουν modules."),
+    "sim.module_missing": ("L{l}-M{m} saknas", "L{l}-M{m} missing", "L{l}-M{m} puuttuu", "L{l}-M{m} mangler", "L{l}-M{m} mangler", "L{l}-M{m} λείπει"),
+
+    # --- commands, connection
+    "cmd.cannot_reset": ("Kan inte återställa {ids}: orsaken kvarstår", "Cannot reset {ids}: the cause remains", "Ei voi palauttaa {ids}: syy jatkuu", "Kan ikke tilbakestille {ids}: årsaken består", "Kan ikke nulstille {ids}: årsagen består", "Δεν γίνεται επαναφορά {ids}: η αιτία παραμένει"),
+    "cmd.reset_done": ("Återställt: {ids}", "Reset: {ids}", "Palautettu: {ids}", "Tilbakestilt: {ids}", "Nulstillet: {ids}", "Επαναφέρθηκαν: {ids}"),
+    "cmd.nothing": ("Inget att återställa", "Nothing to reset", "Ei palautettavaa", "Ingenting å tilbakestille", "Intet at nulstille", "Τίποτα για επαναφορά"),
+    "conn.restored": ("Kontakt med servern återställd", "Connection to the server restored", "Yhteys palvelimeen palautui", "Kontakt med serveren gjenopprettet", "Forbindelse til serveren genoprettet", "Η σύνδεση με τον server αποκαταστάθηκε"),
+    "conn.lost": ("Ingen kontakt med servern", "No connection to the server", "Ei yhteyttä palvelimeen", "Ingen kontakt med serveren", "Ingen forbindelse til serveren", "Καμία σύνδεση με τον server"),
+
+    # --- settings
+    "set.time_title": ("Systemtid", "System time", "Järjestelmän aika", "Systemtid", "Systemtid", "Ώρα συστήματος"),
+    "set.time_hint": ("Centralens klocka används för alla händelser och fortsätter gå även utan skärmen.", "The controller clock is used for all events and keeps running even without the screen.", "Keskuksen kelloa käytetään kaikissa tapahtumissa, ja se käy myös ilman näyttöä.", "Sentralens klokke brukes for alle hendelser og går videre også uten skjermen.", "Centralens ur bruges til alle hændelser og kører videre også uden skærmen.", "Το ρολόι του controller χρησιμοποιείται σε όλα τα συμβάντα και συνεχίζει ακόμα και χωρίς οθόνη."),
+    "set.current": ("Aktuell tid i centralen", "Current time in the controller", "Keskuksen nykyinen aika", "Nåværende tid i sentralen", "Aktuel tid i centralen", "Τρέχουσα ώρα στον controller"),
+    "set.new_time": ("Ny tid", "New time", "Uusi aika", "Ny tid", "Ny tid", "Νέα ώρα"),
+    "set.apply_time": ("Ställ in tid", "Set time", "Aseta aika", "Still inn tid", "Indstil tid", "Ορισμός ώρας"),
+    "set.sync": ("Hämta tid från den här enheten", "Use the time of this device", "Käytä tämän laitteen aikaa", "Hent tid fra denne enheten", "Hent tid fra denne enhed", "Χρήση της ώρας αυτής της συσκευής"),
+    "set.lang_title": ("Språk", "Language", "Kieli", "Språk", "Sprog", "Γλώσσα"),
+    "set.lang_hint": ("Gäller hela gränssnittet, händelser och CSV-export.", "Applies to the whole interface, events and CSV export.", "Koskee koko käyttöliittymää, tapahtumia ja CSV-vientiä.", "Gjelder hele grensesnittet, hendelser og CSV-eksport.", "Gælder hele brugerfladen, hændelser og CSV-eksport.", "Ισχύει για όλη τη διεπαφή, τα συμβάντα και την εξαγωγή CSV."),
+    "set.need_key": ("Vrid nyckelbrytaren till TEKNIKER för att ändra inställningar.", "Turn the key switch to TECHNICIAN to change settings.", "Käännä avainkytkin HUOLTO-asentoon muuttaaksesi asetuksia.", "Vri nøkkelbryteren til TEKNIKER for å endre innstillinger.", "Drej nøglekontakten til TEKNIKER for at ændre indstillinger.", "Γυρίστε τον κλειδοδιακόπτη στη θέση ΤΕΧΝΙΚΟΣ για αλλαγή ρυθμίσεων."),
+    "set.time_saved": ("Tiden är inställd", "Time set", "Aika asetettu", "Tiden er stilt inn", "Tiden er indstillet", "Η ώρα ορίστηκε"),
+    "set.lang_saved": ("Språket är ändrat", "Language changed", "Kieli vaihdettu", "Språket er endret", "Sproget er ændret", "Η γλώσσα άλλαξε"),
+}
+
+
+def main():
+    strings = {lang: {} for lang in LANGS}
+    for key, values in T.items():
+        assert len(values) == len(LANGS), key
+        for lang, value in zip(LANGS, values):
+            strings[lang][key] = value
+    out = {"default": "sv", "languages": NAMES, "locales": LOCALES, "strings": strings}
+    path = Path(__file__).resolve().parent.parent / "app" / "static" / "i18n.json"
+    path.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"wrote {path} ({len(T)} keys x {len(LANGS)} languages)")
+
+
+if __name__ == "__main__":
+    main()
