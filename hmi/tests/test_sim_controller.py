@@ -190,3 +190,38 @@ def test_set_time_requires_key_and_is_logged(ctl):
     assert ev["type"] == "TIME_SET" and abs(ev["time"] - 1_800_000_000) < 1
     with pytest.raises(CommandError):
         ctl.set_time(5)  # nonsense time is rejected
+
+
+def test_silence_sounders_and_resound_on_new_alarm(ctl):
+    ctl.upload_config([point(1, category="A", device_type="FLODESVAKT"),
+                       point(2, category="A", device_type="PRESSOSTAT")])
+    ctl.sim_set_input(1, 1, 1, "ACTIVE")
+    assert ctl.get_status()["sounders"] == "sounding"
+    with pytest.raises(CommandError):
+        ctl.cmd_silence(True)  # needs the key
+    ctl.sim_set_key(True)
+    ctl.cmd_silence(True)
+    assert ctl.get_status()["sounders"] == "silenced"
+    assert ctl.get_status()["relays"]["K1_A"]  # silencing never stops the alarm transmission
+    ctl.sim_set_input(1, 1, 2, "ACTIVE")  # a new fire alarm
+    assert ctl.get_status()["sounders"] == "sounding"
+    assert any(e["type"] == "RESOUND" for e in ctl.get_events(0))
+
+
+def test_service_mode_times_out(ctl):
+    ctl.upload_config([point(1)])
+    ctl.sim_set_key(True)
+    ctl.cmd_service(30)
+    s = ctl.get_status()
+    assert s["service"]["active"] and s["leds"]["yellow_service"]
+    ctl.clock.advance(29 * 60)
+    ctl.tick()
+    assert ctl.get_status()["service"]["remaining_s"] == 60
+    ctl.clock.advance(61)
+    ctl.tick()
+    assert not ctl.get_status()["service"]["active"]
+    assert ctl.get_events(0)[-1]["type"] == "SERVICE_OFF"
+    # alarms keep working in service mode
+    ctl.cmd_service(30)
+    ctl.sim_set_input(1, 1, 1, "ACTIVE")
+    assert ctl.get_status()["relays"]["K2_B"]

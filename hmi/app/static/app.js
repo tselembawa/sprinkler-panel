@@ -68,6 +68,12 @@ function changed(key, value) {
 }
 
 const isTech = () => !!(S.status && S.status.key_tech);
+function fmtDur(sec) {
+  const m = Math.ceil(sec / 60);
+  if (m < 60) return t("dur.min", { n: m });
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${t("dur.h", { n: h })} ${t("dur.min", { n: r })}` : t("dur.h", { n: h });
+}
 function requireTech() {
   if (isTech()) return true;
   toast(t("need_key"), "bad");
@@ -111,6 +117,10 @@ function renderTop() {
   setLed("#led-b", s.leds.yellow_b === "flash" ? "on-amber flash" : s.leds.yellow_b === "steady" ? "on-amber" : "");
   setLed("#led-fault", s.leds.yellow_fault ? "on-amber" : "");
   setLed("#led-drift", s.leds.green_power ? "on-green" : "");
+  setLed("#led-service", s.leds.yellow_service ? "on-amber" : "");
+  const sil = $("#btn-silence");
+  sil.textContent = s.silenced ? t("btn.unsilence") : t("btn.silence");
+  sil.classList.toggle("active", !!s.silenced);
 
   const chip = $("#key-chip");
   chip.textContent = s.key_tech ? t("key.tech") : t("key.user");
@@ -150,7 +160,8 @@ function renderStatusBand() {
   const items = S.points.map((p) => ({ p, v: visual(p) })).filter((x) => x.v.active);
   const of = (kind) => items.filter((x) => x.v.kind === kind);
   const lost = s.lost_modules || [];
-  const hint = s.buzzer ? t("band.press_ack") : "";
+  const service = s.service && s.service.active;
+  const hint = s.buzzer ? t("band.press_ack") : (service ? t("band.service_hint", { t: fmtDur(s.service.remaining_s) }) : "");
 
   const fire = of("A");
   if (s.relays.K1_A || fire.length) {
@@ -158,7 +169,7 @@ function renderStatusBand() {
     const latchedOnly = fire.length && fire.every((x) => x.p.runtime.state === "LATCHED");
     setBand("fire", "fire", t("band.fire"),
       t(latchedOnly ? "band.fire_latched_sub" : "band.fire_sub", { names: namesOf(fire) }),
-      unacked ? t("band.press_ack") : (latchedOnly ? t("band.reset_key") : t("band.acked")), unacked);
+      unacked ? t("band.press_ack") : (s.sounders === "silenced" ? t("band.silenced") : (latchedOnly ? t("band.reset_key") : t("band.acked"))), unacked);
     return;
   }
   const faults = of("FAULT");
@@ -177,6 +188,7 @@ function renderStatusBand() {
   const off = of("OFF");
   if (off.length) { setBand("off", "info", t("band.off"), t("band.off_sub", { n: off.length, names: namesOf(off) }), hint); return; }
   if (!s.config_in_sync) { setBand("off", "info", t("band.unsync"), t("band.unsync_sub"), hint); return; }
+  if (service) { setBand("service", "info", t("band.service"), t("band.service_sub", { t: fmtDur(s.service.remaining_s) })); return; }
   setBand("ok", "ok", t("band.ok"), t("band.ok_sub", { n: S.points.length }), hint);
 }
 
@@ -220,8 +232,10 @@ function renderOverview() {
     ["K2", t("relay.k2"), r.K2_B ? on("") : idle],
     ["K3", t("relay.k3"), r.K3_FAULT_OK ? `<span class="state ok">${t("relay.ok")}</span>` : `<span class="state bad">${t("relay.bad")}</span>`],
     ["K4", t("relay.k4"), r.K4_C ? on("") : idle],
+    ["", t("relay.sounders"), S.status.sounders === "sounding" ? `<span class="state on red">${t("sounders.sounding")}</span>`
+      : S.status.sounders === "silenced" ? `<span class="state silenced">${t("sounders.silenced")}</span>` : idle],
   ];
-  if (changed("relays", [r, L.lang])) {
+  if (changed("relays", [r, S.status.sounders, L.lang])) {
     $("#relays").innerHTML = relayRows.map(([k, l, st]) => `<div class="relay"><span><b>${k}</b> ${l}</span>${st}</div>`).join("");
   }
   const s = S.status;
@@ -669,6 +683,14 @@ $("#sim-key").addEventListener("change", async (e) => {
 $("#btn-ack").addEventListener("click", async () => {
   try { await api("/api/cmd/ack", { json: {} }); await refresh(); } catch (err) { toast(errText(err), "bad"); }
 });
+$("#btn-silence").addEventListener("click", async () => {
+  if (!requireTech()) return;
+  try {
+    const res = await api("/api/cmd/silence", { json: { silence: !S.status.silenced } });
+    toast(res.silenced ? t("cmd.silenced") : t("cmd.unsilenced"), "ok");
+    await refresh();
+  } catch (err) { toast(errText(err), "bad"); }
+});
 $("#btn-reset").addEventListener("click", async () => {
   try {
     const res = await api("/api/cmd/reset", { json: {} });
@@ -752,6 +774,16 @@ function renderSettings(force) {
     $("#ctrl-date").textContent = d.toLocaleDateString(locale(), { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     if (force || !$("#new-time").value) $("#new-time").value = toLocalInput(d);
   }
+  const sv = S.status && S.status.service;
+  const st = $("#service-state");
+  st.textContent = sv && sv.active ? t("set.service_active", { t: fmtDur(sv.remaining_s) }) : t("set.service_inactive");
+  st.className = `service-state ${sv && sv.active ? "on" : ""}`;
+  $("#btn-service-end").hidden = !(sv && sv.active);
+  $("#btn-service-end").disabled = !tech;
+  if (changed("svcbtns", [L.lang, tech])) {
+    $("#service-btns").innerHTML = [30, 60, 120, 240, 480].map((m) =>
+      `<button class="btn btn-ghost" data-service="${m}" ${tech ? "" : "disabled"}>${fmtDur(m * 60)}</button>`).join("");
+  }
   if (changed("langs", [L.lang, tech])) {
     $("#lang-grid").innerHTML = Object.entries(L.dict.languages).map(([code, name]) =>
       `<button class="lang-btn ${code === L.lang ? "active" : ""}" data-lang="${code}" ${tech ? "" : "disabled"}>
@@ -779,6 +811,20 @@ $("#btn-set-time").addEventListener("click", () => {
   setControllerTime(ms / 1000);
 });
 $("#btn-sync-time").addEventListener("click", () => setControllerTime(Date.now() / 1000));
+
+async function setService(minutes) {
+  try {
+    await api("/api/cmd/service", { json: { minutes } });
+    toast(minutes ? t("set.service_started") : t("set.service_ended"), "ok");
+    await refresh();
+    renderSettings(true);
+  } catch (err) { toast(errText(err), "bad"); }
+}
+$("#service-btns").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-service]");
+  if (b) setService(Number(b.dataset.service));
+});
+$("#btn-service-end").addEventListener("click", () => setService(0));
 
 $("#lang-grid").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-lang]");

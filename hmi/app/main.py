@@ -231,6 +231,10 @@ async def api_cmd(request: Request):
             result = controller.cmd_ack()
         elif cmd == "reset":
             result = controller.cmd_reset()
+        elif cmd == "silence":
+            result = controller.cmd_silence(bool(body.get("silence", True)))
+        elif cmd == "service":
+            result = controller.cmd_service(int(body.get("minutes", 0)))
         elif cmd == "disable":
             result = controller.cmd_disable(int(body["point_id"]), bool(body.get("disabled", True)))
         else:

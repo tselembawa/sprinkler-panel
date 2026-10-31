@@ -77,6 +77,8 @@ class SimController:
         self._key_tech = False
         self._disabled: set[int] = set()  # runtime disablement (bortkoppling)
         self._time_offset = 0.0  # simulated RTC: wall clock + offset
+        self._silenced = False  # "Tysta larmdon": external sounders silenced
+        self._service_until: float | None = None  # service mode end (monotonic clock)
         self._started = clock()
         self._event("STARTUP", "SYSTEM", 0)
 
@@ -198,8 +200,11 @@ class SimController:
 
     # ------------------------------------------------------------ main logic
     def tick(self):
-        """Called periodically (e.g. every 100 ms) to run delay timers."""
+        """Called periodically (e.g. every 100 ms) to run delay and service timers."""
         with self._lock:
+            if self._service_until is not None and self._clock() >= self._service_until:
+                self._service_until = None
+                self._event("SERVICE_OFF", "SYSTEM", 0, new="timeout")
             self._evaluate_all()
 
     def _is_enabled(self, pid: int) -> bool:
@@ -278,6 +283,9 @@ class SimController:
     def _raise(self, pid, rt, auto_ack):
         rt.acked = auto_ack
         self._set_state(pid, rt, "ACKED" if auto_ack else "ALARM", "ALARM_ON")
+        if self._silenced and self._cfg.points[pid]["category"] in ("A", "B"):
+            self._silenced = False  # a new alarm always makes the sounders sound again
+            self._event("RESOUND", "POINT", pid)
 
     # -------------------------------------------------------------- commands
     def _require_tech(self):
@@ -313,7 +321,41 @@ class SimController:
                 elif rt.state in ("ALARM", "ACKED") and P.is_latching(self._cfg.points[pid]["device_type"]):
                     remaining.append(pid)
             self._event("RESET", "SYSTEM", 0, user=user)
+            if self._silenced and not any(rt.state in ALARM_STATES for rt in self._rt.values()):
+                self._silenced = False
             return {"reset": reset, "cause_remains": remaining}
+
+    def cmd_silence(self, silence: bool = True, user: int = 0) -> dict:
+        """Tysta larmdon: silence (or re-activate) the external sounders. Requires the key."""
+        with self._lock:
+            self._require_tech()
+            if silence != self._silenced:
+                self._silenced = silence
+                self._event("SILENCE" if silence else "UNSILENCE", "SYSTEM", 0, user=user)
+            return {"silenced": self._silenced}
+
+    def cmd_service(self, minutes: int, user: int = 0) -> dict:
+        """Service mode for 1-480 minutes; 0 ends it. Requires the key."""
+        with self._lock:
+            self._require_tech()
+            if not isinstance(minutes, int) or not 0 <= minutes <= 480:
+                raise CommandError("BAD_DURATION", str(minutes))
+            if minutes == 0:
+                if self._service_until is not None:
+                    self._service_until = None
+                    self._event("SERVICE_OFF", "SYSTEM", 0, new="manual", user=user)
+            else:
+                self._service_until = self._clock() + minutes * 60
+                self._event("SERVICE_ON", "SYSTEM", 0, new=str(minutes), user=user)
+            return {"service": self._service_until is not None}
+
+    def _sounders(self) -> str:
+        """State of the external sounders. Until output rules exist: they follow any A-alarm."""
+        fire = any(self._cfg.points[pid]["category"] == "A" and rt.state in ALARM_STATES
+                   for pid, rt in self._rt.items() if pid in self._cfg.points and self._is_enabled(pid))
+        if not fire:
+            return "off"
+        return "silenced" if self._silenced else "sounding"
 
     def cmd_disable(self, point_id: int, disabled: bool, user: int = 0) -> dict:
         with self._lock:
@@ -384,8 +426,15 @@ class SimController:
                     "yellow_fault": faults > 0,
                     "green_drift": drift > 0,   # an operational indication is active (pump running etc.)
                     "green_power": True,        # "Drift": the panel is running. Later: flashing on battery.
+                    "yellow_service": self._service_until is not None,
                 },
                 "buzzer": unacked,
+                "sounders": self._sounders(),
+                "silenced": self._silenced,
+                "service": {
+                    "active": self._service_until is not None,
+                    "remaining_s": int(max(0, self._service_until - self._clock())) if self._service_until else 0,
+                },
                 "lost_modules": sorted(self._lost_modules),
             }
 

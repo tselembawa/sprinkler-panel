@@ -21,11 +21,13 @@
       <span class="led" id="led-b"><i></i><span data-i18n="led.bc">B/C-larm</span></span>
       <span class="led" id="led-fault"><i></i><span data-i18n="led.fault">Fel</span></span>
       <span class="led" id="led-drift"><i></i><span data-i18n="led.drift">Drift</span></span>
+      <span class="led" id="led-service"><i></i><span data-i18n="led.service">Service</span></span>
     </div>
 
     <div class="actions">
       <span class="chip" id="key-chip">Användare</span>
       <button class="btn btn-ack" id="btn-ack" data-i18n="btn.ack">Kvittera</button>
+      <button class="btn btn-silence" id="btn-silence">Tysta larmdon</button>
       <button class="btn btn-reset" id="btn-reset" data-i18n="btn.reset">Återställ</button>
     </div>
   </header>
@@ -220,6 +222,15 @@
             <button class="btn" id="btn-set-time" data-i18n="set.apply_time">Ställ in tid</button>
             <button class="btn btn-ghost" id="btn-sync-time" data-i18n="set.sync">Hämta tid från den här enheten</button>
           </div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="set.service_title">Serviceläge</h2>
+          <p class="hint" data-i18n="set.service_hint"></p>
+          <div class="service-state" id="service-state"></div>
+          <div class="hint" data-i18n="set.service_start">Starta för:</div>
+          <div class="row wrap service-btns" id="service-btns"></div>
+          <button class="btn btn-ghost" id="btn-service-end" data-i18n="set.service_end">Avsluta serviceläge</button>
         </div>
 
         <div class="card">

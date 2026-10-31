@@ -310,3 +310,13 @@ input[type=search] { min-width: 280px; }
 .lang-btn.active { border-color: var(--accent); background: #12263a; box-shadow: inset 0 0 0 1px var(--accent); }
 .lang-code { font-size: 12px; font-weight: 800; padding: 3px 7px; border-radius: 6px; background: #0006; color: var(--muted); }
 .lang-btn.active .lang-code { background: var(--accent); color: #fff; }
+
+/* ---------- silence, service ---------- */
+.btn-silence { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+.btn-silence.active { background: #5a4310; border-color: var(--amber); color: #ffd27a; }
+.relay .state.silenced { background: #5a4310; color: #ffd27a; }
+.sb-service { background: linear-gradient(90deg, #6a4c00, #8a6400); }
+.service-state { font-size: 22px; font-weight: 700; margin: 6px 0 14px; }
+.service-state.on { color: var(--amber); }
+.service-btns { margin: 8px 0 14px; }
+.service-btns .btn { min-width: 84px; justify-content: center; }
