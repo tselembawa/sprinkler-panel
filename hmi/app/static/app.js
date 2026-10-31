@@ -119,7 +119,11 @@ function renderTop() {
   setLed("#led-drift", s.leds.green_power ? "on-green" : "");
   setLed("#led-service", s.leds.yellow_service ? "on-amber" : "");
   const sil = $("#btn-silence");
-  sil.textContent = s.silenced ? t("btn.unsilence") : t("btn.silence");
+  const silKey = s.silenced ? "btn.unsilence" : "btn.silence";
+  if (sil.dataset.key !== silKey + L.lang) {
+    sil.innerHTML = `<span class="lbl-long">${t(silKey)}</span><span class="lbl-short">${t(silKey + "_short")}</span>`;
+    sil.dataset.key = silKey + L.lang;
+  }
   sil.classList.toggle("active", !!s.silenced);
 
   const chip = $("#key-chip");

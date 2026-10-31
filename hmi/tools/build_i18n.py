@@ -14,10 +14,10 @@ LOCALES = {"sv": "sv-SE", "en": "en-GB", "fi": "fi-FI", "no": "nb-NO", "da": "da
 T = {
     # --- top bar, tabs
     "app.title": ("Sprinklercentral", "Sprinkler panel", "Sprinklerkeskus", "Sprinklersentral", "Sprinklercentral", "Πίνακας sprinkler"),
-    "led.a": ("A-larm", "A-alarm", "A-hälytys", "A-alarm", "A-alarm", "Συναγερμός A"),
-    "led.bc": ("B/C-larm", "B/C-alarm", "B/C-hälytys", "B/C-alarm", "B/C-alarm", "Συναγερμός B/C"),
+    "led.a": ("A-larm", "A-alarm", "A-hälytys", "A-alarm", "A-alarm", "Συναγ. A"),
+    "led.bc": ("B/C-larm", "B/C-alarm", "B/C-hälytys", "B/C-alarm", "B/C-alarm", "Συναγ. B/C"),
     "led.fault": ("Fel", "Fault", "Vika", "Feil", "Fejl", "Σφάλμα"),
-    "led.drift": ("Drift", "Power", "Käyttö", "Drift", "Drift", "Λειτουργία"),
+    "led.drift": ("Drift", "Power", "Käyttö", "Drift", "Drift", "Τροφοδ."),
     "btn.ack": ("Kvittera", "Acknowledge", "Kuittaa", "Kvitter", "Kvittér", "Αναγνώριση"),
     "btn.reset": ("Återställ", "Reset", "Palauta", "Tilbakestill", "Nulstil", "Επαναφορά"),
     "key.tech": ("Tekniker", "Technician", "Huoltaja", "Tekniker", "Tekniker", "Τεχνικός"),
@@ -265,6 +265,8 @@ T = {
     # --- silence sounders, service mode
     "led.service": ("Service", "Service", "Huolto", "Service", "Service", "Σέρβις"),
     "btn.silence": ("Tysta larmdon", "Silence sounders", "Hiljennä sireenit", "Demp sirener", "Dæmp sirener", "Σίγηση σειρήνων"),
+    "btn.silence_short": ("Tysta", "Silence", "Hiljennä", "Demp", "Dæmp", "Σίγηση"),
+    "btn.unsilence_short": ("Ljud på", "Sound on", "Äänet", "Lyd på", "Lyd til", "Ήχος"),
     "btn.unsilence": ("Återaktivera larmdon", "Re-sound sounders", "Palauta sireenit", "Aktiver sirener", "Aktivér sirener", "Επανενεργοποίηση σειρήνων"),
     "relay.sounders": ("Larmdon (sirener)", "Sounders", "Sireenit", "Sirener", "Sirener", "Σειρήνες"),
     "sounders.sounding": ("Ljuder", "Sounding", "Soi", "Lyder", "Lyder", "Ηχούν"),
