@@ -1,0 +1,23 @@
+# systemd service: starts the HMI automatically when the Raspberry Pi boots.
+#
+# Install (replace "pi" with your user name if it is different):
+#   sudo cp scripts/sprinkler-hmi.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sprinkler-hmi
+#
+# Logs:   journalctl -u sprinkler-hmi -f
+
+[Unit]
+Description=Sprinkler panel HMI
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/sprinkler-panel/hmi
+Environment=SPRINKLER_CONTROLLER=sim
+ExecStart=/home/pi/sprinkler-panel/hmi/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

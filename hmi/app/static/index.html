@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sprinklercentral</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%23ff4b4b%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Sprinklercentral</span>
+    </div>
+
+    <div class="indicators" aria-label="Indikeringar">
+      <span class="led" id="led-a" title="A-larm"><i></i>A-larm</span>
+      <span class="led" id="led-b" title="B-larm / C-larm"><i></i>B/C-larm</span>
+      <span class="led" id="led-fault" title="Fel"><i></i>Fel</span>
+      <span class="led" id="led-drift" title="Driftindikering"><i></i>Drift</span>
+    </div>
+
+    <div class="actions">
+      <span class="chip" id="key-chip" title="Nyckelbrytare">Användare</span>
+      <button class="btn btn-ack" id="btn-ack">Kvittera</button>
+      <button class="btn btn-reset" id="btn-reset">Återställ</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" class="active">Översikt</button>
+    <button role="tab" data-tab="graphics">Grafik</button>
+    <button role="tab" data-tab="points">Larmpunkter</button>
+    <button role="tab" data-tab="events">Händelser</button>
+    <button role="tab" data-tab="sim" id="tab-sim" hidden>Simulator</button>
+  </nav>
+
+  <main>
+    <!-- ======================= OVERVIEW ======================= -->
+    <section class="view active" id="view-overview">
+      <div class="summary" id="summary"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Aktiva larm och fel</h2>
+          <div id="active-list" class="active-list"></div>
+        </div>
+        <div class="card">
+          <h2>Utgångar</h2>
+          <div class="relays" id="relays"></div>
+          <h2 class="mt">System</h2>
+          <dl class="kv" id="sysinfo"></dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= GRAPHICS ======================= -->
+    <section class="view" id="view-graphics">
+      <div class="toolbar">
+        <div class="page-chips" id="page-chips"></div>
+        <div class="toolbar-right">
+          <button class="btn btn-ghost" id="btn-edit-markers">Redigera markörer</button>
+          <button class="btn btn-ghost" id="btn-add-page">+ Ny bild</button>
+        </div>
+      </div>
+
+      <form class="card upload" id="upload-form" hidden>
+        <h2>Ladda upp bild</h2>
+        <label>Namn <input name="name" required placeholder="t.ex. Sektion 2"></label>
+        <label>Bild (foto eller ritning) <input name="file" type="file" accept="image/*" required></label>
+        <div class="row">
+          <button class="btn" type="submit">Ladda upp</button>
+          <button class="btn btn-ghost" type="button" id="upload-cancel">Avbryt</button>
+        </div>
+      </form>
+
+      <div class="edit-hint" id="edit-hint" hidden>
+        Redigeringsläge: tryck på bilden för att placera en markör. Tryck på en markör för att ta bort den.
+        <button class="btn btn-ghost btn-sm" id="btn-delete-page">Ta bort bilden</button>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="empty" id="stage-empty">Ingen bild ännu. Tryck på <b>+ Ny bild</b> för att ladda upp ett foto av en sektion.</div>
+        <div class="canvas" id="canvas" hidden>
+          <img id="page-img" alt="">
+          <div class="markers" id="markers"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= POINTS ======================= -->
+    <section class="view" id="view-points">
+      <div class="toolbar">
+        <h2 class="inline">Larmpunkter</h2>
+        <div class="toolbar-right">
+          <button class="btn" id="btn-new-point">+ Ny larmpunkt</button>
+        </div>
+      </div>
+
+      <form class="card point-form" id="point-form" hidden>
+        <h2 id="point-form-title">Ny larmpunkt</h2>
+        <div class="form-grid">
+          <label>Larm-ID <input name="id" type="number" min="1" max="999" required></label>
+          <label>Linje <input name="line" type="number" min="1" max="4" value="1" required></label>
+          <label>Modul <input name="module" type="number" min="1" max="247" value="1" required></label>
+          <label>Ingång <input name="channel" type="number" min="1" max="4" value="1" required></label>
+          <label class="span-2">Namn <input name="name" maxlength="32" required placeholder="Serviceventil Sektion 2"></label>
+          <label>Sektion <input name="section" type="number" min="1" max="255" value="1"></label>
+          <label>Kategori
+            <select name="category">
+              <option value="A">A-larm</option>
+              <option value="B" selected>B-larm</option>
+              <option value="DRIFT">Driftindikering</option>
+              <option value="FAULT">Fel</option>
+            </select>
+          </label>
+          <label>Typ av enhet <select name="device_type" id="device-type"></select></label>
+          <label>Kontakt
+            <select name="contact"><option value="NC">NC (normalt sluten)</option><option value="NO">NO (normalt öppen)</option></select>
+          </label>
+          <label>Fördröjning (s) <input name="delay_s" type="number" min="0" max="60" value="0"></label>
+          <label class="span-2">LCD rad 1 <input name="lcd1" maxlength="20" placeholder="SERVICEVENTIL"></label>
+          <label class="span-2">LCD rad 2 <input name="lcd2" maxlength="20" placeholder="SEKTION 2"></label>
+        </div>
+        <p class="hint" id="latch-hint"></p>
+        <div class="form-msg" id="point-msg"></div>
+        <div class="row">
+          <button class="btn" type="submit">Spara</button>
+          <button class="btn btn-ghost" type="button" id="point-cancel">Avbryt</button>
+          <button class="btn btn-danger" type="button" id="point-delete" hidden>Ta bort</button>
+        </div>
+      </form>
+
+      <div class="card table-wrap">
+        <table class="table" id="points-table">
+          <thead><tr>
+            <th>ID</th><th>Adress</th><th>Namn</th><th>Kategori</th><th>Typ</th>
+            <th>Fördr.</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================= EVENTS ======================= -->
+    <section class="view" id="view-events">
+      <div class="toolbar">
+        <input type="search" id="event-search" placeholder="Sök händelse eller punkt…">
+        <div class="toolbar-right">
+          <a class="btn btn-ghost" id="csv-link" href="/api/events.csv">Exportera CSV</a>
+        </div>
+      </div>
+      <div class="card table-wrap">
+        <table class="table" id="events-table">
+          <thead><tr><th>Nr</th><th>Tid</th><th>Händelse</th><th>Källa</th><th>Ändring</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================= SIMULATOR ======================= -->
+    <section class="view" id="view-sim">
+      <div class="card">
+        <h2>Simulator</h2>
+        <p class="hint">Här styrs den virtuella centralen. På riktig hårdvara ersätts detta av ingångarna på I/O-modulerna.</p>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="sim-key"><span></span> Nyckelbrytare i läge TEKNIKER</label>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Ingångar</h2>
+        <div id="sim-inputs" class="sim-inputs"></div>
+      </div>
+      <div class="card">
+        <h2>Moduler</h2>
+        <div id="sim-modules" class="row wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="popover" id="popover" hidden></div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
