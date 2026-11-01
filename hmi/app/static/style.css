@@ -59,7 +59,8 @@ h2.inline { margin: 0; }
 }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 .btn-ghost { background: transparent; border-color: var(--line); color: var(--text); }
-.btn-ack { background: var(--amber); color: #1a1200; }
+.btn-ack { background: #2fb35f; color: #04230f; }
+.btn-ack:hover { background: #3cc86e; }
 .btn-reset { background: var(--panel-2); border-color: var(--line); color: var(--text); }
 .btn-danger { background: transparent; border-color: var(--red); color: var(--red); }
 .btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
@@ -312,7 +313,9 @@ input[type=search] { min-width: 280px; }
 .lang-btn.active .lang-code { background: var(--accent); color: #fff; }
 
 /* ---------- silence, service ---------- */
-.btn-silence { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+.btn-silence { background: var(--panel-2); border-color: var(--line); color: var(--text); gap: 8px; }
+.btn-silence .ic { width: 22px; height: 22px; flex: none; }
+.btn-silence.active .ic { color: #ff6b6b; }
 .btn-silence.active { background: #5a4310; border-color: var(--amber); color: #ffd27a; }
 .relay .state.silenced { background: #5a4310; color: #ffd27a; }
 .sb-service { background: linear-gradient(90deg, #6a4c00, #8a6400); }

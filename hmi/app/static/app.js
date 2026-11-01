@@ -159,6 +159,10 @@ function updateBuzzer() {
   buzzerSet(fire ? "fire" : "normal");
 }
 
+// Speaker icons for the "Tysta larmdon" button: waves = sounders normal, X = silenced.
+const SPEAKER_ON = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
+const SPEAKER_OFF = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l6 6M22 9l-6 6"/></svg>';
+
 // ---------------------------------------------------------------- top bar
 function renderTop() {
   const s = S.status;
@@ -171,7 +175,7 @@ function renderTop() {
   const sil = $("#btn-silence");
   const silKey = s.silenced ? "btn.unsilence" : "btn.silence";
   if (sil.dataset.key !== silKey + L.lang) {
-    sil.innerHTML = `<span class="lbl-long">${t(silKey)}</span><span class="lbl-short">${t(silKey + "_short")}</span>`;
+    sil.innerHTML = `${s.silenced ? SPEAKER_OFF : SPEAKER_ON}<span class="lbl-long">${t(silKey)}</span><span class="lbl-short">${t(silKey + "_short")}</span>`;
     sil.dataset.key = silKey + L.lang;
   }
   sil.classList.toggle("active", !!s.silenced);
