@@ -335,7 +335,12 @@ class SimController:
             return {"silenced": self._silenced}
 
     def cmd_service(self, minutes: int, user: int = 0) -> dict:
-        """Service mode for 1-480 minutes; 0 ends it. Requires the key."""
+        """Service mode for 1-480 minutes; 0 ends it. Requires the key.
+
+        While active, no alarm or fault is transmitted (K1-K4 held in their idle state).
+        Everything is still shown and heard locally. Alarms still active when service
+        mode ends are transmitted at once.
+        """
         with self._lock:
             self._require_tech()
             if not isinstance(minutes, int) or not 0 <= minutes <= 480:
@@ -403,6 +408,13 @@ class SimController:
                 if cat != "DRIFT" and in_alarm and not rt.acked:
                     unacked = True
             faults = fault_points + len(self._lost_modules)
+            service = self._service_until is not None
+            logical = {
+                "K1_A": a_active > 0,
+                "K2_B": b_unacked > 0,
+                "K3_FAULT_OK": faults == 0,  # fail-safe: energized when everything is OK
+                "K4_C": c_active > 0,
+            }
             return {
                 "protocol": P.PROTOCOL_VERSION,
                 "firmware": "sim-0.1",
@@ -414,12 +426,14 @@ class SimController:
                 "key_tech": self._key_tech,
                 "counts": {"A": a_active, "B": b_unacked, "C": c_active,
                            "DRIFT": drift, "FAULT": faults, "DISABLED": disabled},
-                "relays": {
-                    "K1_A": a_active > 0,
-                    "K2_B": b_unacked > 0,
-                    "K3_FAULT_OK": faults == 0,  # fail-safe: energized when everything is OK
-                    "K4_C": c_active > 0,
-                },
+                # What the outputs would be without service mode ...
+                "relays_logical": logical,
+                # ... and what they actually are. In service mode nothing is transmitted:
+                # K1/K2/K4 stay idle and K3 stays energized for software-detected faults.
+                # (A dead controller or lost power still drops K3 through the hardware watchdog.)
+                "relays": ({"K1_A": False, "K2_B": False, "K3_FAULT_OK": True, "K4_C": False}
+                           if service else logical),
+                "transmission_blocked": service,
                 "leds": {
                     "red_a": a_active > 0,
                     "yellow_b": "flash" if b_unacked else ("steady" if c_active else "off"),

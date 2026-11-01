@@ -336,3 +336,4 @@ input[type=search] { min-width: 280px; }
   .lbl-short { display: inline !important; }
 }
 .lbl-short { display: none; }
+.relay .state.blocked { background: transparent; border: 1px dashed var(--amber); color: #ffd27a; }

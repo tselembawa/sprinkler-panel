@@ -221,7 +221,24 @@ def test_service_mode_times_out(ctl):
     ctl.tick()
     assert not ctl.get_status()["service"]["active"]
     assert ctl.get_events(0)[-1]["type"] == "SERVICE_OFF"
-    # alarms keep working in service mode
+    # alarms are detected in service mode, but not transmitted
     ctl.cmd_service(30)
     ctl.sim_set_input(1, 1, 1, "ACTIVE")
-    assert ctl.get_status()["relays"]["K2_B"]
+    s = ctl.get_status()
+    assert s["relays_logical"]["K2_B"] and not s["relays"]["K2_B"]
+
+
+def test_service_mode_blocks_all_transmission_and_releases_at_end(ctl):
+    ctl.upload_config([point(1, category="A", device_type="FLODESVAKT"), point(2)])
+    ctl.sim_set_key(True)
+    ctl.cmd_service(60)
+    ctl.sim_set_input(1, 1, 1, "ACTIVE")   # fire alarm while the technician works
+    ctl.sim_set_input(1, 1, 2, "OPEN")     # and a cut cable
+    s = ctl.get_status()
+    assert s["transmission_blocked"]
+    assert s["relays"] == {"K1_A": False, "K2_B": False, "K3_FAULT_OK": True, "K4_C": False}
+    assert s["relays_logical"]["K1_A"] and not s["relays_logical"]["K3_FAULT_OK"]
+    assert s["leds"]["red_a"] and s["sounders"] == "sounding"   # still shown and heard locally
+    ctl.cmd_service(0)                       # service ends: the active alarm goes out at once
+    s = ctl.get_status()
+    assert s["relays"]["K1_A"] and not s["relays"]["K3_FAULT_OK"] and not s["transmission_blocked"]

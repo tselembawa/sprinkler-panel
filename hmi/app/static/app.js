@@ -165,7 +165,7 @@ function renderStatusBand() {
   const of = (kind) => items.filter((x) => x.v.kind === kind);
   const lost = s.lost_modules || [];
   const service = s.service && s.service.active;
-  const hint = s.buzzer ? t("band.press_ack") : (service ? t("band.service_hint", { t: fmtDur(s.service.remaining_s) }) : "");
+  const hint = service ? t("band.tx_blocked") : (s.buzzer ? t("band.press_ack") : "");
 
   const fire = of("A");
   if (s.relays.K1_A || fire.length) {
@@ -173,7 +173,7 @@ function renderStatusBand() {
     const latchedOnly = fire.length && fire.every((x) => x.p.runtime.state === "LATCHED");
     setBand("fire", "fire", t("band.fire"),
       t(latchedOnly ? "band.fire_latched_sub" : "band.fire_sub", { names: namesOf(fire) }),
-      unacked ? t("band.press_ack") : (s.sounders === "silenced" ? t("band.silenced") : (latchedOnly ? t("band.reset_key") : t("band.acked"))), unacked);
+      service ? t("band.tx_blocked") : (unacked ? t("band.press_ack") : (s.sounders === "silenced" ? t("band.silenced") : (latchedOnly ? t("band.reset_key") : t("band.acked")))), unacked);
     return;
   }
   const faults = of("FAULT");
@@ -230,16 +230,21 @@ function renderOverview() {
   }
 
   const r = S.status.relays;
+  const lg = S.status.relays_logical || r, blocked = !!S.status.transmission_blocked;
+  const blk = `<span class="state blocked">${t("relay.blocked")}</span>`;
   const on = (cls) => `<span class="state on ${cls}">${t("relay.active")}</span>`, idle = `<span class="state">${t("relay.idle")}</span>`;
+  const out = (key, cls) => (r[key] ? on(cls) : (blocked && lg[key] ? blk : idle));
   const relayRows = [
-    ["K1", t("relay.k1"), r.K1_A ? on("red") : idle],
-    ["K2", t("relay.k2"), r.K2_B ? on("") : idle],
-    ["K3", t("relay.k3"), r.K3_FAULT_OK ? `<span class="state ok">${t("relay.ok")}</span>` : `<span class="state bad">${t("relay.bad")}</span>`],
-    ["K4", t("relay.k4"), r.K4_C ? on("") : idle],
+    ["K1", t("relay.k1"), out("K1_A", "red")],
+    ["K2", t("relay.k2"), out("K2_B", "")],
+    ["K3", t("relay.k3"), r.K3_FAULT_OK
+      ? (blocked && !lg.K3_FAULT_OK ? `<span class="state blocked">${t("relay.bad_blocked")}</span>` : `<span class="state ok">${t("relay.ok")}</span>`)
+      : `<span class="state bad">${t("relay.bad")}</span>`],
+    ["K4", t("relay.k4"), out("K4_C", "")],
     ["", t("relay.sounders"), S.status.sounders === "sounding" ? `<span class="state on red">${t("sounders.sounding")}</span>`
       : S.status.sounders === "silenced" ? `<span class="state silenced">${t("sounders.silenced")}</span>` : idle],
   ];
-  if (changed("relays", [r, S.status.sounders, L.lang])) {
+  if (changed("relays", [r, lg, blocked, S.status.sounders, L.lang])) {
     $("#relays").innerHTML = relayRows.map(([k, l, st]) => `<div class="relay"><span><b>${k}</b> ${l}</span>${st}</div>`).join("");
   }
   const s = S.status;
@@ -828,7 +833,12 @@ $("#service-btns").addEventListener("click", (e) => {
   const b = e.target.closest("[data-service]");
   if (b) setService(Number(b.dataset.service));
 });
-$("#btn-service-end").addEventListener("click", () => setService(0));
+$("#btn-service-end").addEventListener("click", () => {
+  const lg = (S.status && S.status.relays_logical) || {};
+  const n = (S.status.counts.A || 0) + (S.status.counts.B || 0) + (S.status.counts.C || 0) + (lg.K3_FAULT_OK === false ? (S.status.counts.FAULT || 1) : 0);
+  if (n && !confirm(t("set.service_end_confirm", { n }))) return;
+  setService(0);
+});
 
 $("#lang-grid").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-lang]");
