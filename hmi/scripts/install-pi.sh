@@ -54,6 +54,16 @@ touch "$AUTOSTART"
 if ! grep -q "hmi/scripts/kiosk.sh" "$AUTOSTART"; then
   echo "$DIR/hmi/scripts/kiosk.sh &" >> "$AUTOSTART"
 fi
+# Also a standard desktop autostart entry, for desktops that do not use labwc
+# (kiosk.sh makes sure only one copy runs).
+mkdir -p "$HOME/.config/autostart"
+cat > "$HOME/.config/autostart/sprinkler-kiosk.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Sprinkler panel kiosk
+Exec=$DIR/hmi/scripts/kiosk.sh
+X-GNOME-Autostart-enabled=true
+EOF
 
 # --- 4. Kiosk watchdog ------------------------------------------------------------
 echo "== 4/5 Kiosk watchdog service"

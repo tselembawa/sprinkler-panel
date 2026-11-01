@@ -8,6 +8,10 @@ URL="http://localhost:8000/"
 HEALTH="http://127.0.0.1:8000/api/health"
 BROWSER="$(command -v chromium || command -v chromium-browser)"
 
+# Only one kiosk at a time (the script may be started by more than one autostart method).
+exec 9>"/tmp/sprinkler-kiosk-$(id -u).lock"
+flock -n 9 || exit 0
+
 if [ -z "$BROWSER" ]; then
   echo "kiosk: Chromium not found" >&2
   exit 1
