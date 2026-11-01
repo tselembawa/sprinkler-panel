@@ -21,7 +21,7 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -376,6 +376,20 @@ async def api_sim(request: Request):
     return JSONResponse({"ok": True})
 
 
+def asset_version() -> str:
+    """Changes whenever a UI file changes, so browsers fetch the new files at once."""
+    names = ("app.js", "style.css", "i18n.json", "index.html")
+    return format(int(max((BASE / "static" / n).stat().st_mtime for n in names)), "x")
+
+
+async def index_page(request: Request):
+    html = (BASE / "static" / "index.html").read_text(encoding="utf-8")
+    v = asset_version()
+    html = html.replace('href="/style.css"', f'href="/style.css?v={v}"')
+    html = html.replace('src="/app.js"', f'src="/app.js?v={v}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 class NoCacheStatic(StaticFiles):
     """UI files: the browser must check for a newer version on every load (after updates)."""
 
@@ -386,6 +400,8 @@ class NoCacheStatic(StaticFiles):
 
 
 routes = [
+    Route("/", index_page),
+    Route("/index.html", index_page),
     Route("/api/meta", api_meta),
     Route("/api/status", api_status),
     Route("/api/points", api_points, methods=["GET"]),

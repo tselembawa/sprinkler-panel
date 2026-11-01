@@ -173,10 +173,12 @@ function renderTop() {
   setLed("#led-drift", s.leds.green_power ? "on-green" : "");
   setLed("#led-service", s.leds.yellow_service ? "on-amber" : "");
   const sil = $("#btn-silence");
-  const silKey = s.silenced ? "btn.unsilence" : "btn.silence";
-  if (sil.dataset.key !== silKey + L.lang) {
-    sil.innerHTML = `${s.silenced ? SPEAKER_OFF : SPEAKER_ON}<span class="lbl-long">${t(silKey)}</span><span class="lbl-short">${t(silKey + "_short")}</span>`;
-    sil.dataset.key = silKey + L.lang;
+  // The label stays the same (so the button never changes size); the icon and colour show the state.
+  const silKey = (s.silenced ? "off" : "on") + L.lang;
+  if (sil.dataset.key !== silKey) {
+    sil.innerHTML = `${s.silenced ? SPEAKER_OFF : SPEAKER_ON}<span class="lbl-long">${t("btn.silence")}</span><span class="lbl-short">${t("btn.silence_short")}</span>`;
+    sil.title = s.silenced ? t("btn.unsilence") : t("btn.silence");
+    sil.dataset.key = silKey;
   }
   sil.classList.toggle("active", !!s.silenced);
 

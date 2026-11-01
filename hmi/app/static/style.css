@@ -340,3 +340,10 @@ input[type=search] { min-width: 280px; }
 }
 .lbl-short { display: none; }
 .relay .state.blocked { background: transparent; border: 1px dashed var(--amber); color: #ffd27a; }
+
+/* Top bar never wraps; buttons keep their size whatever the state */
+.topbar { flex-wrap: nowrap; }
+.indicators { min-width: 0; overflow: hidden; }
+.led { white-space: nowrap; }
+.actions { flex: none; }
+.actions .btn { white-space: nowrap; flex: none; }
