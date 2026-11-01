@@ -52,21 +52,31 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## Εγκατάσταση στο Raspberry Pi 5
 
+Σε Raspberry Pi OS **με desktop**:
+
 ```bash
 cd ~
 git clone https://github.com/tselembawa/sprinkler-panel.git
-cd sprinkler-panel/hmi
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd sprinkler-panel
+bash hmi/scripts/install-pi.sh
+sudo reboot
 ```
 
-Από το PC ή το laptop: http://sprinkler-pi.local:8000
+Μετά την επανεκκίνηση η σελίδα του πίνακα ανοίγει μόνη της σε πλήρη οθόνη (kiosk).
+Από laptop στο ίδιο δίκτυο: http://<όνομα-του-pi>.local:8000
 
-Αυτόματη εκκίνηση με το Pi: δες τις οδηγίες μέσα στο `hmi/scripts/sprinkler-hmi.service`
-(άλλαξε το `pi` αν ο χρήστης σου έχει άλλο όνομα).
+Το `install-pi.sh` στήνει:
 
-Τα δεδομένα (βάση και φωτογραφίες) αποθηκεύονται στο `hmi/data/`. Δεν ανεβαίνουν στο Git.
+| | Τι κάνει |
+| --- | --- |
+| `sprinkler-hmi` | Ο server ξεκινά με το Pi και ξαναξεκινά αν πέσει. **Watchdog επιπέδου 1:** η εφαρμογή στέλνει «είμαι καλά» στο systemd μόνο όσο απαντούν ο controller και η βάση και τρέχει ο συγχρονισμός των events. Αν σταματήσει για 30 s, το systemd την ξαναξεκινά. |
+| Kiosk (`kiosk.sh`) | Auto-login, Chromium σε kiosk mode στη σελίδα του πίνακα, χωρίς σβήσιμο οθόνης. Αν ο browser κλείσει, ξανανοίγει. |
+| `sprinkler-kiosk-watchdog` | Αν η σελίδα «παγώσει» και σταματήσει να ρωτάει τον server για 90 s, ξεκινά ξανά ο browser. |
+| Hardware watchdog | **Επίπεδο 2:** αν κολλήσει ολόκληρο το Linux, το chip του Pi κάνει reboot μόνο του σε περίπου 15 s. |
+
+Έλεγχος υγείας: `curl -s localhost:8000/api/health`. Logs: `journalctl -u sprinkler-hmi -f`
+
+Οι συναγερμοί δεν εξαρτώνται από τίποτα από τα παραπάνω: τους χειρίζεται ο Main Controller.
 
 ## Πρώτη δοκιμή (όπως στην προδιαγραφή)
 

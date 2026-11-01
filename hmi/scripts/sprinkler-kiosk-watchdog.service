@@ -1,0 +1,15 @@
+# systemd service: restarts the kiosk browser if the panel page freezes.
+# Installed by scripts/install-pi.sh (__USER__ and __DIR__ are filled in by the installer).
+
+[Unit]
+Description=Sprinkler panel kiosk watchdog
+After=sprinkler-hmi.service
+
+[Service]
+User=__USER__
+ExecStart=__DIR__/hmi/scripts/kiosk-watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

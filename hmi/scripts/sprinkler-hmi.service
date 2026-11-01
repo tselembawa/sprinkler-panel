@@ -1,23 +1,29 @@
-# systemd service: starts the HMI automatically when the Raspberry Pi boots.
+# systemd service: the HMI web server. Installed by scripts/install-pi.sh
+# (__USER__ and __DIR__ are filled in by the installer).
 #
-# Install (replace "pi" with your user name if it is different):
-#   sudo cp scripts/sprinkler-hmi.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now sprinkler-hmi
+# Watchdog (level 1): the app sends WATCHDOG=1 to systemd only while it is healthy
+# (controller answers, database answers, event sync running). If the pings stop for
+# WatchdogSec, systemd kills and restarts the service.
 #
 # Logs:   journalctl -u sprinkler-hmi -f
 
 [Unit]
 Description=Sprinkler panel HMI
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/sprinkler-panel/hmi
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+User=__USER__
+WorkingDirectory=__DIR__/hmi
 Environment=SPRINKLER_CONTROLLER=sim
-ExecStart=/home/pi/sprinkler-panel/hmi/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__DIR__/hmi/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=always
-RestartSec=2
+RestartSec=3
+TimeoutStartSec=60
 
 [Install]
 WantedBy=multi-user.target

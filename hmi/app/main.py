@@ -28,6 +28,7 @@ from starlette.staticfiles import StaticFiles
 from . import protocol as P
 from .controller_link import CommandError, make_controller
 from .db import Database
+from .health import HealthMonitor
 
 BASE = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("SPRINKLER_DATA", BASE.parent / "data"))
@@ -39,6 +40,7 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 db = Database(DATA / "sprinkler.db")
 controller = make_controller(start_seq=db.last_event_seq())
+health = HealthMonitor(controller, db)
 
 I18N = json.loads((BASE / "static" / "i18n.json").read_text(encoding="utf-8"))
 LANGUAGES = tuple(I18N["languages"])
@@ -84,7 +86,11 @@ class Background:
 
     def _sync(self):
         while not self._stop.wait(0.5):
-            sync_events()
+            try:
+                sync_events()
+                health.sync_ran()
+            except Exception as e:  # noqa: BLE001 - keep the loop alive, health reports it
+                print("event sync failed:", e, flush=True)
 
 
 def sync_events():
@@ -112,9 +118,11 @@ async def lifespan(app):
     sync_events()
     bg = Background()
     bg.start()
+    health.start()  # READY=1 to systemd, then feeds the watchdog while healthy
     try:
         yield
     finally:
+        health.stop()
         bg.stop()
 
 
@@ -178,6 +186,9 @@ async def api_meta(request: Request):
 
 
 async def api_status(request: Request):
+    # The kiosk browser on the Pi itself polls from localhost: that is its heartbeat.
+    if request.client and request.client.host in ("127.0.0.1", "::1"):
+        health.kiosk_seen()
     status = controller.get_status()
     status["hmi_config_crc"] = P.config_crc(db.points())
     status["config_in_sync"] = status["hmi_config_crc"] == status["config_crc"]
@@ -327,6 +338,11 @@ async def api_marker_delete(request: Request):
     return JSONResponse({"deleted": True})
 
 
+async def api_health(request: Request):
+    report = health.check()
+    return JSONResponse(report, status_code=200 if report["ok"] else 503)
+
+
 # --- settings
 async def api_settings(request: Request):
     if request.method == "GET":
@@ -404,6 +420,7 @@ routes = [
     Route("/index.html", index_page),
     Route("/api/meta", api_meta),
     Route("/api/status", api_status),
+    Route("/api/health", api_health),
     Route("/api/points", api_points, methods=["GET"]),
     Route("/api/points", api_point_save, methods=["POST"]),
     Route("/api/points/{pid:int}", api_point_delete, methods=["DELETE"]),
