@@ -18,8 +18,8 @@ while true; do
   [ -z "$age" ] && continue
   if [ "$age" -gt "$LIMIT" ]; then
     echo "kiosk-watchdog: no contact from the kiosk page for ${age}s - restarting the browser"
-    pkill -f -- "--kiosk" || true
-    sleep 5
-    pkill -KILL -f -- "--kiosk" || true   # a frozen (stopped) process ignores the normal signal
+    # KILL (not TERM): a frozen process may never handle a normal stop signal.
+    # kiosk.sh starts a fresh browser a few seconds later.
+    pkill -KILL -f -- "--kiosk" || true
   fi
 done
