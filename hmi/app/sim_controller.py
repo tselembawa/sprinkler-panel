@@ -439,7 +439,9 @@ class SimController:
                     "yellow_b": "flash" if b_unacked else ("steady" if c_active else "off"),
                     "yellow_fault": faults > 0,
                     "green_drift": drift > 0,   # an operational indication is active (pump running etc.)
-                    "green_power": True,        # "Drift": the panel is running. Later: flashing on battery.
+                    # "Drift": the panel is in normal operation. Off in service mode, when the
+                    # yellow Service LED is lit instead. Later: flashing on battery.
+                    "green_power": not service,
                     "yellow_service": self._service_until is not None,
                 },
                 "buzzer": unacked,

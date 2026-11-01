@@ -214,12 +214,14 @@ def test_service_mode_times_out(ctl):
     ctl.cmd_service(30)
     s = ctl.get_status()
     assert s["service"]["active"] and s["leds"]["yellow_service"]
+    assert not s["leds"]["green_power"]  # Drift is off while in service mode
     ctl.clock.advance(29 * 60)
     ctl.tick()
     assert ctl.get_status()["service"]["remaining_s"] == 60
     ctl.clock.advance(61)
     ctl.tick()
     assert not ctl.get_status()["service"]["active"]
+    assert ctl.get_status()["leds"]["green_power"]
     assert ctl.get_events(0)[-1]["type"] == "SERVICE_OFF"
     # alarms are detected in service mode, but not transmitted
     ctl.cmd_service(30)
