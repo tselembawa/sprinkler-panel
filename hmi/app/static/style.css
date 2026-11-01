@@ -347,3 +347,23 @@ input[type=search] { min-width: 280px; }
 .led { white-space: nowrap; }
 .actions { flex: none; }
 .actions .btn { white-space: nowrap; flex: none; }
+
+/* ---------- short screens (e.g. 7" 1024x600) ---------- */
+@media (max-height: 720px) {
+  .statusband { min-height: 64px; padding: 8px 16px; gap: 14px; }
+  .sb-icon, .sb-icon svg { width: 42px; height: 42px; }
+  .sb-title { font-size: 28px; }
+  .sb-sub { font-size: 16px; margin-top: 2px; }
+  .sb-hint { font-size: 15px; padding: 7px 12px; }
+  .tabs { padding-top: 2px; }
+  .tabs button { min-height: 44px; }
+  main { padding: 10px 12px; }
+  .toolbar { margin-bottom: 8px; }
+  .toolbar .btn, .page-chip { min-height: 40px; }
+  .stage { min-height: 0; padding: 4px; }
+  /* top bar ~56 + band ~64 + tabs ~46 + toolbar ~48 + paddings */
+  .canvas img { max-height: calc(100vh - 250px); }
+  .summary { margin-bottom: 10px; }
+  .tile { padding: 8px 12px; }
+  .tile .n { font-size: 24px; }
+}
