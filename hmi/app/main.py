@@ -376,6 +376,15 @@ async def api_sim(request: Request):
     return JSONResponse({"ok": True})
 
 
+class NoCacheStatic(StaticFiles):
+    """UI files: the browser must check for a newer version on every load (after updates)."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 routes = [
     Route("/api/meta", api_meta),
     Route("/api/status", api_status),
@@ -393,7 +402,7 @@ routes = [
     Route("/api/time", api_time, methods=["POST"]),
     Route("/api/sim/{what}", api_sim, methods=["POST"]),
     Mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads"),
-    Mount("/", StaticFiles(directory=BASE / "static", html=True), name="static"),
+    Mount("/", NoCacheStatic(directory=BASE / "static", html=True), name="static"),
 ]
 
 app = Starlette(routes=routes, lifespan=lifespan)
