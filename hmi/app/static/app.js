@@ -109,6 +109,56 @@ function markerPageFor(pointId) {
   return null;
 }
 
+// ---------------------------------------------------------------- buzzer sound
+// Plays the panel buzzer through the browser (Web Audio). Browsers only allow sound
+// after a click on the page, so the audio is unlocked on the first pointer press.
+const BUZ = { ctx: null, gain: null, on: true, pattern: null, timer: null };
+try { BUZ.on = localStorage.getItem("buzzerSound") !== "0"; } catch { /* storage blocked */ }
+
+function buzzerUnlock() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  if (!BUZ.ctx) {
+    BUZ.ctx = new AC();
+    const osc = BUZ.ctx.createOscillator();
+    BUZ.gain = BUZ.ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 2700;
+    BUZ.gain.gain.value = 0;
+    osc.connect(BUZ.gain).connect(BUZ.ctx.destination);
+    osc.start();
+  }
+  if (BUZ.ctx.state === "suspended") BUZ.ctx.resume();
+  const want = BUZ.wanted; BUZ.pattern = undefined; buzzerSet(want);
+}
+document.addEventListener("pointerdown", buzzerUnlock, { capture: true });
+
+// pattern: null (silent) | "fire" (fast) | "normal" (one beep per second)
+function buzzerSet(pattern) {
+  BUZ.wanted = pattern;
+  if (!BUZ.on || !BUZ.ctx || BUZ.ctx.state !== "running") pattern = null;
+  if (pattern === BUZ.pattern) return;
+  BUZ.pattern = pattern;
+  clearInterval(BUZ.timer);
+  BUZ.timer = null;
+  if (!BUZ.gain) return;
+  const g = BUZ.gain.gain, ctx = BUZ.ctx;
+  g.cancelScheduledValues(ctx.currentTime);
+  g.setValueAtTime(0, ctx.currentTime);
+  if (!pattern) return;
+  const [on, period] = pattern === "fire" ? [0.18, 0.36] : [0.15, 1.0];
+  const beep = () => { const t = ctx.currentTime; g.setValueAtTime(0.05, t); g.setValueAtTime(0, t + on); };
+  beep();
+  BUZ.timer = setInterval(beep, period * 1000);
+}
+
+function updateBuzzer() {
+  const s = S.status;
+  if (!s || !s.buzzer) { buzzerSet(null); return; }
+  const fire = S.points.some((p) => { const v = visual(p); return v.kind === "A" && v.unacked; });
+  buzzerSet(fire ? "fire" : "normal");
+}
+
 // ---------------------------------------------------------------- top bar
 function renderTop() {
   const s = S.status;
@@ -132,6 +182,7 @@ function renderTop() {
   $("#btn-reset").disabled = !s.key_tech;
 
   renderStatusBand();
+  updateBuzzer();
 }
 
 // ---------------------------------------------------------------- status band
@@ -682,6 +733,13 @@ $("#sim-modules").addEventListener("change", async (e) => {
   await api("/api/sim/module", { json: { line, module, lost: cb.checked } });
   await refresh();
 });
+$("#sim-sound").checked = BUZ.on;
+$("#sim-sound").addEventListener("change", (e) => {
+  BUZ.on = e.target.checked;
+  try { localStorage.setItem("buzzerSound", BUZ.on ? "1" : "0"); } catch { /* storage blocked */ }
+  buzzerUnlock();
+  updateBuzzer();
+});
 $("#sim-key").addEventListener("change", async (e) => {
   await api("/api/sim/key", { json: { tech: e.target.checked } });
   if (!e.target.checked) S.editing = false;
@@ -763,6 +821,7 @@ async function refresh() {
     autoShowNewAlarm();
   } catch (err) {
     $("#led-drift").className = "led";
+    buzzerSet(null);
     setBand("lost", "lost", t("band.lost"), t("band.lost_sub"));
     if (lastStatusOk) toast(t("conn.lost"), "bad");
     lastStatusOk = false;

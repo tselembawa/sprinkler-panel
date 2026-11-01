@@ -297,6 +297,8 @@ T = {
     "relay.blocked": ("Blockerad", "Blocked", "Estetty", "Blokkert", "Blokeret", "Μπλοκαρισμένο"),
     "relay.bad_blocked": ("Fel – blockerad", "Fault – blocked", "Vika – estetty", "Feil – blokkert", "Fejl – blokeret", "Σφάλμα – μπλοκαρισμένο"),
     "set.service_end_confirm": ("{n} aktiva larm eller fel skickas vidare direkt när serviceläget avslutas. Fortsätta?", "{n} active alarms or faults will be transmitted as soon as service mode ends. Continue?", "{n} aktiivista hälytystä tai vikaa välitetään heti, kun huoltotila päättyy. Jatketaanko?", "{n} aktive alarmer eller feil sendes videre med en gang servicemodus avsluttes. Fortsette?", "{n} aktive alarmer eller fejl sendes videre, så snart servicetilstand afsluttes. Fortsæt?", "{n} ενεργοί συναγερμοί ή σφάλματα θα μεταδοθούν μόλις τελειώσει το σέρβις. Συνέχεια;"),
+    "sim.sound": ("Summerljud i webbläsaren", "Buzzer sound in the browser", "Summerin ääni selaimessa", "Summerlyd i nettleseren", "Summerlyd i browseren", "Ήχος βομβητή στον browser"),
+    "sim.sound_hint": ("Webbläsaren spelar ljud först efter att du klickat någonstans på sidan.", "The browser plays sound only after you have clicked somewhere on the page.", "Selain toistaa ääntä vasta, kun olet napsauttanut jotain sivulla.", "Nettleseren spiller lyd først etter at du har klikket et sted på siden.", "Browseren afspiller først lyd, når du har klikket et sted på siden.", "Ο browser παίζει ήχο μόνο αφού κάνετε κλικ κάπου στη σελίδα."),
 }
 
 

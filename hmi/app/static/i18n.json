@@ -276,7 +276,9 @@
    "band.tx_blocked": "Ej vidarebefordrat (service)",
    "relay.blocked": "Blockerad",
    "relay.bad_blocked": "Fel – blockerad",
-   "set.service_end_confirm": "{n} aktiva larm eller fel skickas vidare direkt när serviceläget avslutas. Fortsätta?"
+   "set.service_end_confirm": "{n} aktiva larm eller fel skickas vidare direkt när serviceläget avslutas. Fortsätta?",
+   "sim.sound": "Summerljud i webbläsaren",
+   "sim.sound_hint": "Webbläsaren spelar ljud först efter att du klickat någonstans på sidan."
   },
   "en": {
    "app.title": "Sprinkler panel",
@@ -537,7 +539,9 @@
    "band.tx_blocked": "Not transmitted (service)",
    "relay.blocked": "Blocked",
    "relay.bad_blocked": "Fault – blocked",
-   "set.service_end_confirm": "{n} active alarms or faults will be transmitted as soon as service mode ends. Continue?"
+   "set.service_end_confirm": "{n} active alarms or faults will be transmitted as soon as service mode ends. Continue?",
+   "sim.sound": "Buzzer sound in the browser",
+   "sim.sound_hint": "The browser plays sound only after you have clicked somewhere on the page."
   },
   "fi": {
    "app.title": "Sprinklerkeskus",
@@ -798,7 +802,9 @@
    "band.tx_blocked": "Ei välitetty (huolto)",
    "relay.blocked": "Estetty",
    "relay.bad_blocked": "Vika – estetty",
-   "set.service_end_confirm": "{n} aktiivista hälytystä tai vikaa välitetään heti, kun huoltotila päättyy. Jatketaanko?"
+   "set.service_end_confirm": "{n} aktiivista hälytystä tai vikaa välitetään heti, kun huoltotila päättyy. Jatketaanko?",
+   "sim.sound": "Summerin ääni selaimessa",
+   "sim.sound_hint": "Selain toistaa ääntä vasta, kun olet napsauttanut jotain sivulla."
   },
   "no": {
    "app.title": "Sprinklersentral",
@@ -1059,7 +1065,9 @@
    "band.tx_blocked": "Ikke videresendt (service)",
    "relay.blocked": "Blokkert",
    "relay.bad_blocked": "Feil – blokkert",
-   "set.service_end_confirm": "{n} aktive alarmer eller feil sendes videre med en gang servicemodus avsluttes. Fortsette?"
+   "set.service_end_confirm": "{n} aktive alarmer eller feil sendes videre med en gang servicemodus avsluttes. Fortsette?",
+   "sim.sound": "Summerlyd i nettleseren",
+   "sim.sound_hint": "Nettleseren spiller lyd først etter at du har klikket et sted på siden."
   },
   "da": {
    "app.title": "Sprinklercentral",
@@ -1320,7 +1328,9 @@
    "band.tx_blocked": "Ikke videresendt (service)",
    "relay.blocked": "Blokeret",
    "relay.bad_blocked": "Fejl – blokeret",
-   "set.service_end_confirm": "{n} aktive alarmer eller fejl sendes videre, så snart servicetilstand afsluttes. Fortsæt?"
+   "set.service_end_confirm": "{n} aktive alarmer eller fejl sendes videre, så snart servicetilstand afsluttes. Fortsæt?",
+   "sim.sound": "Summerlyd i browseren",
+   "sim.sound_hint": "Browseren afspiller først lyd, når du har klikket et sted på siden."
   },
   "el": {
    "app.title": "Πίνακας sprinkler",
@@ -1581,7 +1591,9 @@
    "band.tx_blocked": "Δεν μεταδόθηκε (σέρβις)",
    "relay.blocked": "Μπλοκαρισμένο",
    "relay.bad_blocked": "Σφάλμα – μπλοκαρισμένο",
-   "set.service_end_confirm": "{n} ενεργοί συναγερμοί ή σφάλματα θα μεταδοθούν μόλις τελειώσει το σέρβις. Συνέχεια;"
+   "set.service_end_confirm": "{n} ενεργοί συναγερμοί ή σφάλματα θα μεταδοθούν μόλις τελειώσει το σέρβις. Συνέχεια;",
+   "sim.sound": "Ήχος βομβητή στον browser",
+   "sim.sound_hint": "Ο browser παίζει ήχο μόνο αφού κάνετε κλικ κάπου στη σελίδα."
   }
  }
 }
