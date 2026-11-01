@@ -19,5 +19,7 @@ while true; do
   if [ "$age" -gt "$LIMIT" ]; then
     echo "kiosk-watchdog: no contact from the kiosk page for ${age}s - restarting the browser"
     pkill -f -- "--kiosk" || true
+    sleep 5
+    pkill -KILL -f -- "--kiosk" || true   # a frozen (stopped) process ignores the normal signal
   fi
 done
