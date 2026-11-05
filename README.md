@@ -50,7 +50,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 Άνοιξε στον browser των Windows: http://localhost:8000
 
-## Εγκατάσταση στο Raspberry Pi 5
+## Εγκατάσταση στο Raspberry Pi (5 ή, για δοκιμές, 3B)
 
 Σε Raspberry Pi OS **με desktop**:
 
@@ -63,6 +63,10 @@ sudo reboot
 ```
 
 Μετά την επανεκκίνηση η σελίδα του πίνακα ανοίγει μόνη της σε πλήρη οθόνη (kiosk).
+Στο Pi 3 ο browser τρέχει αυτόματα χωρίς επιτάχυνση γραφικών, γιατί με αυτήν κρασάρει.
+
+Έξοδος από το kiosk μέχρι το επόμενο reboot (Ctrl+Alt+T για terminal):
+`pkill -f kiosk.sh; pkill -f -- --kiosk` · ξανά: `nohup ~/sprinkler-panel/hmi/scripts/kiosk.sh >/dev/null 2>&1 &`
 Από laptop στο ίδιο δίκτυο: http://<όνομα-του-pi>.local:8000
 
 Το `install-pi.sh` στήνει:
@@ -71,7 +75,7 @@ sudo reboot
 | --- | --- |
 | `sprinkler-hmi` | Ο server ξεκινά με το Pi και ξαναξεκινά αν πέσει. **Watchdog επιπέδου 1:** η εφαρμογή στέλνει «είμαι καλά» στο systemd μόνο όσο απαντούν ο controller και η βάση και τρέχει ο συγχρονισμός των events. Αν σταματήσει για 30 s, το systemd την ξαναξεκινά. |
 | Kiosk (`kiosk.sh`) | Auto-login, Chromium σε kiosk mode στη σελίδα του πίνακα, χωρίς σβήσιμο οθόνης. Αν ο browser κλείσει, ξανανοίγει. |
-| `sprinkler-kiosk-watchdog` | Αν η σελίδα «παγώσει» και σταματήσει να ρωτάει τον server για 90 s, ξεκινά ξανά ο browser. |
+| `sprinkler-kiosk-watchdog` | Αν η σελίδα «παγώσει» ή κρασάρει («Aw, Snap!») και σταματήσει να ρωτάει τον server για 30 s, ξεκινά ξανά ο browser (μετά περιμένει 90 s να φορτώσει). |
 | Hardware watchdog | **Επίπεδο 2:** αν κολλήσει ολόκληρο το Linux, το chip του Pi κάνει reboot μόνο του σε περίπου 15 s. |
 
 Έλεγχος υγείας: `curl -s localhost:8000/api/health`. Logs: `journalctl -u sprinkler-hmi -f`

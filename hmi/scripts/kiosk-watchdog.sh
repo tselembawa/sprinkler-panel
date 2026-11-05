@@ -4,12 +4,15 @@
 #
 # The page polls /api/status several times per second; /api/health reports how many
 # seconds ago that last happened (kiosk_age_s). Above LIMIT seconds the browser is killed;
-# kiosk.sh then starts it again.
+# kiosk.sh then starts it again. This also covers a crashed page ("Aw, Snap!"), which stops
+# polling. After a restart the new browser gets GRACE seconds to load before the next check
+# (a Raspberry Pi 3 needs 20-40 s).
 #
 # If the server itself is down nothing is done here: systemd restarts the server.
 
 HEALTH="http://127.0.0.1:8000/api/health"
-LIMIT=90
+LIMIT=30
+GRACE=90
 CHECK_EVERY=15
 
 while true; do
@@ -21,5 +24,6 @@ while true; do
     # KILL (not TERM): a frozen process may never handle a normal stop signal.
     # kiosk.sh starts a fresh browser a few seconds later.
     pkill -KILL -f -- "--kiosk" || true
+    sleep "$GRACE"
   fi
 done
