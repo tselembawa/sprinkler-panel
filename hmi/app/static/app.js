@@ -284,6 +284,7 @@ function renderOverview() {
         <div class="st">${t("ov.no_comm")}</div></div>`);
     }
     $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">${t("ov.empty")}</div>`;
+    markMore($("#active-list"));
   }
 
   const r = S.status.relays;
@@ -315,6 +316,13 @@ function renderOverview() {
     $("#sysinfo").innerHTML = info.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
   }
 }
+
+// No scrollbars on the panel: a list that continues below the visible part fades out at the bottom.
+function markMore(el) {
+  el.classList.toggle("more", el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+}
+$("#active-list").addEventListener("scroll", (e) => markMore(e.currentTarget));
+window.addEventListener("resize", () => markMore($("#active-list")));
 
 $("#active-list").addEventListener("click", (e) => {
   const row = e.target.closest("[data-point]");

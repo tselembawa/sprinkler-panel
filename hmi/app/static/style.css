@@ -369,8 +369,78 @@ input[type=search] { min-width: 280px; }
   .tile .n { font-size: 24px; }
 }
 
-/* Dark, thin scrollbars (the default light one stands out on the panel screen) */
-html { scrollbar-width: thin; scrollbar-color: #3a4752 var(--bg); }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: #3a4752; border-radius: 4px; }
+
+/* ---------- app shell: the page itself never scrolls ----------
+   Top bar, status band and tabs stay fixed; only the content area (main) can move,
+   and only when a list is longer than the screen (swipe). No scrollbars anywhere. */
+html, body { height: 100%; overflow: hidden; }
+body { display: flex; flex-direction: column; }
+.sticky-head, .tabs { flex: none; }
+main { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overscroll-behavior: contain; }
+* { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+
+/* Overview fills exactly the space below the tabs */
+#view-overview.active { display: flex; flex-direction: column; height: 100%; }
+#view-overview .summary { flex: none; }
+.ov-grid {
+  flex: 1; min-height: 0; display: grid; gap: 16px;
+  grid-template-columns: 1.3fr 1fr 1fr; grid-template-rows: 1fr;
+  grid-template-areas: "active outputs system";
+}
+.ov-grid .card { margin-bottom: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.ov-active { grid-area: active; }
+.ov-outputs { grid-area: outputs; }
+.ov-system { grid-area: system; }
+.ov-grid .active-list { flex: 1; min-height: 0; overflow-y: auto; }
+/* Lists (alarm points, events): the list scrolls inside its card, headings stay in place */
+#view-points.active, #view-events.active { display: flex; flex-direction: column; height: 100%; }
+#view-points .toolbar, #view-events .toolbar, #view-points .point-form { flex: none; }
+#view-points .table-wrap, #view-events .table-wrap { flex: 1; min-height: 0; overflow: auto; margin-bottom: 0; }
+.table th { z-index: 1; }
+
+@media (max-width: 900px) {
+  .ov-grid { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "active" "outputs" "system"; }
+  #view-overview.active { height: auto; }
+}
+
+/* ---------- 7" 1024x600 panel screen: everything on one screen ---------- */
+@media (max-height: 720px) and (min-width: 901px) {
+  /* Overview: three columns side by side */
+  .ov-grid { gap: 10px; }
+  .ov-grid .card { padding: 10px 12px; }
+  .ov-grid h2 { margin-bottom: 8px; font-size: 13px; }
+  .relays { gap: 6px; }
+  .relay { padding: 7px 10px; font-size: 14px; }
+  .relay .state { font-size: 12px; padding: 2px 8px; }
+  .kv { font-size: 13px; gap: 5px 10px; }
+  .alarm-row { padding: 8px 10px; grid-template-columns: 48px 1fr auto; gap: 8px; }
+  .empty { padding: 12px; }
+
+  /* Settings: three columns */
+  .settings-lock { padding: 8px 12px; margin-bottom: 10px; font-size: 14px; }
+  .grid-settings { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .grid-settings .card { padding: 10px 12px; margin-bottom: 0; }
+  .grid-settings .hint { font-size: 13px; margin: 4px 0 6px; }
+  .clock { font-size: 38px; }
+  .clock-date { margin-bottom: 8px; }
+  .field { margin-bottom: 8px; }
+  .lang-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .lang-btn { min-height: 44px; padding: 0 10px; gap: 8px; }
+  .service-state { font-size: 18px; margin: 4px 0 8px; }
+  .service-btns { margin: 6px 0 8px; }
+  .service-btns .btn { min-width: 70px; min-height: 42px; }
+
+  /* Alarm point form: six columns so it fits above the list */
+  .point-form { padding: 10px 12px; margin-bottom: 10px; }
+  .form-grid { grid-template-columns: repeat(6, 1fr); gap: 0 10px; }
+  .point-form label { margin-bottom: 6px; font-size: 13px; gap: 3px; }
+  .point-form input, .point-form select { min-height: 38px; }
+  .point-form .form-msg { margin: 2px 0 6px; min-height: 18px; }
+  /* While a point is being edited the form gets the whole screen */
+  #view-points:has(#point-form:not([hidden])) .table-wrap,
+  #view-points:has(#point-form:not([hidden])) .toolbar { display: none; }
+  #view-points .point-form { flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 0; }
+  .card { margin-bottom: 10px; }
+}
+.active-list.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }

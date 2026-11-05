@@ -59,15 +59,17 @@
     <section class="view active" id="view-overview">
       <div class="summary" id="summary"></div>
 
-      <div class="grid-2">
-        <div class="card">
+      <div class="ov-grid">
+        <div class="card ov-active">
           <h2 data-i18n="ov.active">Aktiva larm och fel</h2>
           <div id="active-list" class="active-list"></div>
         </div>
-        <div class="card">
+        <div class="card ov-outputs">
           <h2 data-i18n="ov.outputs">Utgångar</h2>
           <div class="relays" id="relays"></div>
-          <h2 class="mt" data-i18n="ov.system">System</h2>
+        </div>
+        <div class="card ov-system">
+          <h2 data-i18n="ov.system">System</h2>
           <dl class="kv" id="sysinfo"></dl>
         </div>
       </div>
