@@ -36,7 +36,8 @@ h2.inline { margin: 0; }
 }
 .sticky-head { position: sticky; top: 0; z-index: 10; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
-.brand-mark { width: 14px; height: 14px; border-radius: 3px; background: var(--red); box-shadow: 0 0 0 3px #ff4b4b33; }
+/* Logo mark: neutral colour so it is never mistaken for a lit alarm LED */
+.brand-mark { width: 14px; height: 14px; border-radius: 3px; background: var(--accent); opacity: .8; }
 .indicators { display: flex; gap: 14px; flex: 1; flex-wrap: wrap; }
 .led { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 14px; }
 .led i { width: 14px; height: 14px; border-radius: 50%; background: #2a333a; border: 1px solid #39444d; }
@@ -327,7 +328,7 @@ input[type=search] { min-width: 280px; }
 /* ---------- narrow screens (7" touchscreen is 800 px wide) ---------- */
 @media (max-width: 1200px) {
   .topbar { gap: 8px; padding: 8px 8px; flex-wrap: nowrap; }
-  .brand-name { display: none; }
+  .brand { display: none; }
   .indicators { gap: 8px; flex-wrap: nowrap; }
   .led { font-size: 12.5px; gap: 5px; white-space: nowrap; }
   .led i { width: 12px; height: 12px; }
@@ -367,3 +368,9 @@ input[type=search] { min-width: 280px; }
   .tile { padding: 8px 12px; }
   .tile .n { font-size: 24px; }
 }
+
+/* Dark, thin scrollbars (the default light one stands out on the panel screen) */
+html { scrollbar-width: thin; scrollbar-color: #3a4752 var(--bg); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #3a4752; border-radius: 4px; }
