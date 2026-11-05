@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import os
+import subprocess
 import threading
 import time
 import uuid
@@ -370,6 +371,36 @@ async def api_time(request: Request):
     return JSONResponse(result)
 
 
+# --- restart of the panel computer (Raspberry Pi)
+REBOOT_CMD = ["sudo", "-n", "/usr/bin/systemctl", "reboot"]
+
+
+def reboot_allowed() -> bool:
+    """Only on the panel itself (SPRINKLER_REBOOT=1 in the service file, set by install-pi.sh)
+    and only if sudo allows the reboot command without a password (sudoers rule from install-pi.sh)."""
+    if os.environ.get("SPRINKLER_REBOOT") != "1":
+        return False
+    try:
+        return subprocess.run(["sudo", "-n", "-l", *REBOOT_CMD[2:]], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+async def api_reboot(request: Request):
+    # Technician only: the key switch must be in TECHNICIAN position.
+    if not controller.get_status()["key_tech"]:
+        return err("ACCESS_DENIED", 403)
+    if not reboot_allowed():
+        return err("REBOOT_UNAVAILABLE", 400)
+
+    def later():
+        time.sleep(1.5)  # let the answer reach the screen first
+        subprocess.run(REBOOT_CMD, capture_output=True)
+
+    threading.Thread(target=later, daemon=True).start()
+    return JSONResponse({"ok": True})
+
+
 # --- simulator only
 async def api_sim(request: Request):
     if not hasattr(controller, "sim_set_input"):
@@ -433,6 +464,7 @@ routes = [
     Route("/api/markers/{mid:int}", api_marker_delete, methods=["DELETE"]),
     Route("/api/settings", api_settings, methods=["GET", "POST"]),
     Route("/api/time", api_time, methods=["POST"]),
+    Route("/api/system/reboot", api_reboot, methods=["POST"]),
     Route("/api/sim/{what}", api_sim, methods=["POST"]),
     Mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads"),
     Mount("/", NoCacheStatic(directory=BASE / "static", html=True), name="static"),

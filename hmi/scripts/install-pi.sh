@@ -41,6 +41,14 @@ install_unit() {  # $1 = unit file name in hmi/scripts
 # --- 2. HMI server service ---------------------------------------------------------
 echo "== 2/5 Server service with systemd watchdog"
 install_unit sprinkler-hmi.service
+# The panel may restart the Pi (Settings -> Restart, technician key only): allow exactly
+# this one command without a password, nothing else.
+SUDOERS_TMP="$(mktemp)"
+echo "$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl reboot" > "$SUDOERS_TMP"
+if sudo visudo -cf "$SUDOERS_TMP" >/dev/null; then
+  sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/sprinkler-reboot
+fi
+rm -f "$SUDOERS_TMP"
 
 # --- 3. Kiosk ------------------------------------------------------------------------
 echo "== 3/5 Kiosk mode"
@@ -86,7 +94,8 @@ if [ -f "$CONFIG" ] && ! grep -q "^dtparam=watchdog=on" "$CONFIG"; then
 fi
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now sprinkler-hmi.service
+sudo systemctl enable sprinkler-hmi.service
+sudo systemctl restart sprinkler-hmi.service
 sudo systemctl enable --now sprinkler-kiosk-watchdog.service
 
 echo

@@ -438,9 +438,86 @@ main { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overscroll-behavio
   .point-form input, .point-form select { min-height: 38px; }
   .point-form .form-msg { margin: 2px 0 6px; min-height: 18px; }
   /* While a point is being edited the form gets the whole screen */
-  #view-points:has(#point-form:not([hidden])) .table-wrap,
+  #view-points:has(#point-form:not([hidden])) .rail-host,
   #view-points:has(#point-form:not([hidden])) .toolbar { display: none; }
   #view-points .point-form { flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 0; }
   .card { margin-bottom: 10px; }
 }
 .active-list.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+
+/* ---------- scroll rail ("elevator") for long lists ---------- */
+.rail-host { position: relative; display: flex; gap: 8px; flex: 1; min-height: 0; min-width: 0; }
+.rail-host > :first-child { flex: 1; min-width: 0; min-height: 0; }
+.rail { flex: none; width: 36px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 2px 0; user-select: none; }
+.rail[hidden] { display: none; }
+.rail-btn {
+  width: 36px; height: 36px; padding: 0; border-radius: 50%; flex: none; cursor: pointer;
+  display: grid; place-items: center; color: #7cc8ff;
+  border: 1px solid rgba(90, 180, 255, .38);
+  background: radial-gradient(circle at 50% 30%, #1d2e3e, #0a1118 72%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .45), 0 0 12px rgba(47, 140, 255, .14);
+  transition: box-shadow .15s, color .15s, opacity .2s, border-color .15s;
+  touch-action: none;
+}
+.rail-btn:active:not(:disabled) { color: #fff; border-color: #6cc0ff; box-shadow: 0 0 18px rgba(47, 160, 255, .65), inset 0 0 10px rgba(47, 160, 255, .35); }
+.rail-btn:disabled { opacity: .22; cursor: default; }
+.rail-track {
+  position: relative; flex: 1; width: 8px; border-radius: 4px; cursor: pointer; touch-action: none;
+  background: linear-gradient(180deg, #0b141c, #13202b);
+  box-shadow: inset 0 0 0 1px #1d2d3b;
+}
+.rail-track::before { content: ""; position: absolute; inset: 0 -14px; }            /* wide touch area */
+.rail-track::after {                                                                  /* scale marks */
+  content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; transform: translateX(-50%);
+  background: repeating-linear-gradient(to bottom, rgba(90, 180, 255, .28) 0 2px, transparent 2px 14px);
+  pointer-events: none;
+}
+.rail-thumb {
+  position: absolute; left: 50%; top: 0; z-index: 1; width: 14px; border-radius: 8px; cursor: grab; touch-action: none;
+  background: linear-gradient(180deg, #a6e4ff 0%, #47a6ff 50%, #1f6fe0 100%);
+  box-shadow: 0 0 10px rgba(59, 155, 255, .75), 0 0 26px rgba(59, 155, 255, .3), inset 0 1px 0 rgba(255, 255, 255, .65);
+  transition: width .15s, box-shadow .15s;
+}
+.rail-thumb::before { content: ""; position: absolute; inset: 0 -14px; }               /* wide touch area */
+.rail-thumb::after {                                                                   /* grip */
+  content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 10px; transform: translate(-50%, -50%);
+  background: repeating-linear-gradient(to bottom, rgba(4, 22, 44, .6) 0 1.5px, transparent 1.5px 4px);
+}
+.rail.moving .rail-thumb, .rail-thumb.drag {
+  width: 18px; cursor: grabbing;
+  box-shadow: 0 0 14px rgba(90, 180, 255, .95), 0 0 34px rgba(59, 155, 255, .45), inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+.rail-tip {
+  position: absolute; right: calc(100% + 14px); top: 50%; transform: translateY(-50%);
+  white-space: nowrap; font: 600 12px/1 ui-monospace, "DejaVu Sans Mono", monospace; letter-spacing: .04em;
+  color: #c8ebff; background: rgba(7, 16, 25, .94); border: 1px solid rgba(90, 180, 255, .5);
+  padding: 6px 9px; border-radius: 6px; box-shadow: 0 0 14px rgba(47, 140, 255, .35);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.rail-tip:empty { display: none; }
+.rail.moving .rail-tip { opacity: 1; }
+/* fire: the rail turns red like the rest of the screen */
+body.fire .rail-thumb { background: linear-gradient(180deg, #ffc2c2 0%, #ff5252 50%, #c81e1e 100%); box-shadow: 0 0 12px rgba(255, 70, 70, .8), 0 0 28px rgba(255, 70, 70, .35), inset 0 1px 0 rgba(255, 255, 255, .6); }
+body.fire .rail-btn { color: #ff9a9a; border-color: rgba(255, 90, 90, .45); }
+
+/* ---------- settings: restart ---------- */
+.btn-reboot { display: inline-flex; align-items: center; gap: 10px; border-color: rgba(255, 120, 90, .5); color: #ffb39e; }
+.btn-reboot:not(:disabled):active { background: rgba(255, 110, 80, .15); }
+.reboot-overlay {
+  position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  background: rgba(5, 9, 13, .94); color: #cfe9ff; font-size: 22px; font-weight: 600;
+}
+.reboot-overlay[hidden] { display: none; }
+.reboot-ring { width: 64px; height: 64px; border-radius: 50%; border: 4px solid #1c3448; border-top-color: #47a6ff; animation: spin 1s linear infinite; box-shadow: 0 0 22px rgba(71, 166, 255, .3); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-height: 720px) and (min-width: 901px) {
+  .grid-settings > .card:nth-child(1), .grid-settings > .card:nth-child(2) { grid-row: span 2; }
+  .card-system .hint { margin-bottom: 8px; }
+  .lang-btn { min-height: 38px; }
+  .table th, .table td { padding: 9px 6px; }
+  .table td .btn { padding: 0 12px; }
+  .btn-ic .lbl { display: none; }
+  .btn-ic { width: 40px; padding: 0 !important; justify-content: center; }
+  .grid-settings h2 { margin-bottom: 4px; }
+}
+.btn-ic { display: inline-flex; align-items: center; gap: 6px; }

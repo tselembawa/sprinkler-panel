@@ -76,6 +76,7 @@ sudo reboot
 | `sprinkler-hmi` | Ο server ξεκινά με το Pi και ξαναξεκινά αν πέσει. **Watchdog επιπέδου 1:** η εφαρμογή στέλνει «είμαι καλά» στο systemd μόνο όσο απαντούν ο controller και η βάση και τρέχει ο συγχρονισμός των events. Αν σταματήσει για 30 s, το systemd την ξαναξεκινά. |
 | Kiosk (`kiosk.sh`) | Auto-login, Chromium σε kiosk mode στη σελίδα του πίνακα, χωρίς σβήσιμο οθόνης. Αν ο browser κλείσει, ξανανοίγει. |
 | `sprinkler-kiosk-watchdog` | Αν η σελίδα «παγώσει» ή κρασάρει («Aw, Snap!») και σταματήσει να ρωτάει τον server για 30 s, ξεκινά ξανά ο browser (μετά περιμένει 90 s να φορτώσει). |
+| Επανεκκίνηση από την οθόνη | Inställningar → System → «Starta om panelen», μόνο με το κλειδί σε TEKNIKER. Το `install-pi.sh` επιτρέπει στον χρήστη μόνο την εντολή `systemctl reboot` χωρίς κωδικό (`/etc/sudoers.d/sprinkler-reboot`). |
 | Hardware watchdog | **Επίπεδο 2:** αν κολλήσει ολόκληρο το Linux, το chip του Pi κάνει reboot μόνο του σε περίπου 15 s. |
 
 Έλεγχος υγείας: `curl -s localhost:8000/api/health`. Logs: `journalctl -u sprinkler-hmi -f`

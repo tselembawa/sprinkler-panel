@@ -20,6 +20,8 @@ User=__USER__
 WorkingDirectory=__DIR__/hmi
 Environment=SPRINKLER_CONTROLLER=sim
 Environment=PYTHONUNBUFFERED=1
+# Allows the technician to restart the panel from Settings (see the sudoers rule in install-pi.sh)
+Environment=SPRINKLER_REBOOT=1
 ExecStart=__DIR__/hmi/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3

@@ -244,12 +244,25 @@
           <p class="hint" data-i18n="set.lang_hint"></p>
           <div class="lang-grid" id="lang-grid"></div>
         </div>
+
+        <div class="card card-system">
+          <h2 data-i18n="set.system_title">System</h2>
+          <p class="hint" data-i18n="set.system_hint"></p>
+          <button class="btn btn-ghost btn-reboot" id="btn-reboot">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3v8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M7.05 6.05a8 8 0 1 0 9.9 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+            <span data-i18n="set.reboot">Starta om panelen</span>
+          </button>
+        </div>
       </div>
     </section>
   </main>
 
   <div class="popover" id="popover" hidden></div>
   <div class="toast" id="toast" hidden></div>
+  <div class="reboot-overlay" id="reboot-overlay" hidden>
+    <div class="reboot-ring"></div>
+    <div class="reboot-text" data-i18n="set.rebooting">Panelen startar om …</div>
+  </div>
 
   <script src="/app.js"></script>
 </body>

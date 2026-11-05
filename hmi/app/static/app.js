@@ -585,6 +585,12 @@ function hidePopover() { $("#popover").hidden = true; }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") hidePopover(); });
 
 // ---------------------------------------------------------------- points
+// Row buttons: icon + text; on the small panel screen only the icon is shown (text in the tooltip).
+const IC = (d) => `<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const IC_EDIT = IC("M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4");
+const IC_OFF = IC("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8");
+const IC_ON = IC("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12.5l3 3 5-6");
+
 function renderPointsTable() {
   const key = [L.lang, S.points.map((p) => [p, visual(p).text, isTech()])];
   if (!changed("ptable", key)) return;
@@ -599,8 +605,8 @@ function renderPointsTable() {
       <td>${esc(t("dev." + p.device_type))}</td><td>${p.delay_s ? p.delay_s + " s" : "–"}</td>
       <td><span class="status-text ${sc}">${esc(v.text)}</span></td>
       <td class="row">
-        <button class="btn btn-ghost btn-sm" data-edit="${p.id}" ${tech ? "" : "disabled"}>${t("pt.edit")}</button>
-        <button class="btn btn-ghost btn-sm" data-toggle="${p.id}" data-disable="${enabled ? 1 : 0}" ${tech ? "" : "disabled"}>${enabled ? t("pt.disable") : t("pt.enable")}</button>
+        <button class="btn btn-ghost btn-sm btn-ic" data-edit="${p.id}" title="${t("pt.edit")}" ${tech ? "" : "disabled"}>${IC_EDIT}<span class="lbl">${t("pt.edit")}</span></button>
+        <button class="btn btn-ghost btn-sm btn-ic" data-toggle="${p.id}" data-disable="${enabled ? 1 : 0}" title="${enabled ? t("pt.disable") : t("pt.enable")}" ${tech ? "" : "disabled"}>${enabled ? IC_OFF : IC_ON}<span class="lbl">${enabled ? t("pt.disable") : t("pt.enable")}</span></button>
       </td></tr>`;
   }).join("") : `<tr><td colspan="8" class="empty">${t("pt.empty")}</td></tr>`;
 }
@@ -862,6 +868,7 @@ function renderSettings(force) {
   st.className = `service-state ${sv && sv.active ? "on" : ""}`;
   $("#btn-service-end").hidden = !(sv && sv.active);
   $("#btn-service-end").disabled = !tech;
+  $("#btn-reboot").disabled = !tech;
   if (changed("svcbtns", [L.lang, tech])) {
     $("#service-btns").innerHTML = [30, 60, 120, 240, 480].map((m) =>
       `<button class="btn btn-ghost" data-service="${m}" ${tech ? "" : "disabled"}>${fmtDur(m * 60)}</button>`).join("");
@@ -913,6 +920,16 @@ $("#btn-service-end").addEventListener("click", () => {
   setService(0);
 });
 
+// Restart of the panel computer: technician key only (also checked by the server).
+$("#btn-reboot").addEventListener("click", async () => {
+  if (!confirm(t("set.reboot_confirm"))) return;
+  try {
+    await api("/api/system/reboot", { json: {} });
+    $("#reboot-overlay").hidden = false;
+    setTimeout(() => { $("#reboot-overlay").hidden = true; }, 180000);  // fallback if it never went down
+  } catch (err) { toast(errText(err), "bad"); }
+});
+
 $("#lang-grid").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-lang]");
   if (!b || b.dataset.lang === L.lang) return;
@@ -937,6 +954,120 @@ function setLanguage(lang) {
   renderSettings(true);
   if (S.tab === "events") loadEvents();
 }
+
+// ---------------------------------------------------------------- scroll rail ("elevator")
+// The panel has no browser scrollbars. Long lists get this rail instead: arrow buttons
+// (tap = one page, hold = keep going), a draggable glowing handle, tap on the track to jump,
+// and a label showing which rows are on screen.
+const CHEV = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+function attachRail(el, itemSel) {
+  const host = document.createElement("div");
+  host.className = "rail-host";
+  el.parentNode.insertBefore(host, el);
+  host.appendChild(el);
+  const rail = document.createElement("div");
+  rail.className = "rail";
+  rail.hidden = true;
+  rail.innerHTML = `<button class="rail-btn" type="button" data-dir="-1">${CHEV("M6 15l6-6 6 6")}</button>
+    <div class="rail-track"><div class="rail-thumb"><span class="rail-tip"></span></div></div>
+    <button class="rail-btn" type="button" data-dir="1">${CHEV("M6 9l6 6 6-6")}</button>`;
+  host.appendChild(rail);
+  const [up, down] = rail.querySelectorAll(".rail-btn");
+  const track = rail.querySelector(".rail-track");
+  const thumb = rail.querySelector(".rail-thumb");
+  const tip = rail.querySelector(".rail-tip");
+  let thumbH = 40, trackH = 0, frame = 0, idle = 0;
+
+  const max = () => el.scrollHeight - el.clientHeight;
+  function label() {
+    const items = el.querySelectorAll(itemSel);
+    if (!items.length) return "";
+    const top = el.getBoundingClientRect().top, bottom = top + el.clientHeight;
+    const head = el.querySelector("thead");
+    const visTop = top + (head ? head.offsetHeight : 0);
+    let first = 0, last = 0;
+    items.forEach((it, i) => {
+      const r = it.getBoundingClientRect();
+      if (r.bottom > visTop + 4 && r.top < bottom - 4) { if (!first) first = i + 1; last = i + 1; }
+    });
+    return first ? `${first}–${last} / ${items.length}` : "";
+  }
+  function update() {
+    frame = 0;
+    const m = max();
+    const over = m > 2;
+    rail.hidden = !over;
+    host.classList.toggle("has-rail", over);
+    if (!over) return;
+    up.title = up.ariaLabel = t("rail.up");
+    down.title = down.ariaLabel = t("rail.down");
+    trackH = track.clientHeight;
+    thumbH = Math.min(trackH, Math.max(44, trackH * el.clientHeight / el.scrollHeight));
+    const y = (trackH - thumbH) * Math.min(1, el.scrollTop / m);
+    thumb.style.height = `${thumbH}px`;
+    thumb.style.transform = `translate(-50%, ${y}px)`;
+    up.disabled = el.scrollTop <= 1;
+    down.disabled = el.scrollTop >= m - 1;
+    if (rail.classList.contains("moving")) tip.textContent = label();
+  }
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+  function moving() {
+    rail.classList.add("moving");
+    clearTimeout(idle);
+    idle = setTimeout(() => rail.classList.remove("moving"), 900);
+  }
+  el.addEventListener("scroll", () => { moving(); schedule(); }, { passive: true });
+  new ResizeObserver(schedule).observe(el);
+  new ResizeObserver(schedule).observe(track);
+  new MutationObserver(schedule).observe(el, { childList: true, subtree: true });
+
+  // arrows: tap = one page, hold = repeat
+  let repeat = 0;
+  const page = (dir) => el.scrollBy({ top: dir * el.clientHeight * 0.85, behavior: "smooth" });
+  const stop = () => { clearTimeout(repeat); clearInterval(repeat); repeat = 0; };
+  [up, down].forEach((b) => {
+    b.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const dir = Number(b.dataset.dir);
+      page(dir);
+      stop();
+      repeat = setTimeout(() => { repeat = setInterval(() => page(dir), 260); }, 450);
+    });
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => b.addEventListener(ev, stop));
+  });
+
+  // handle: drag
+  thumb.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    thumb.setPointerCapture(e.pointerId);
+    thumb.classList.add("drag");
+    const y0 = e.clientY, s0 = el.scrollTop, k = max() / Math.max(1, trackH - thumbH);
+    const move = (ev) => { el.scrollTop = s0 + (ev.clientY - y0) * k; moving(); };
+    const end = () => {
+      thumb.classList.remove("drag");
+      thumb.removeEventListener("pointermove", move);
+      thumb.removeEventListener("pointerup", end);
+      thumb.removeEventListener("pointercancel", end);
+    };
+    thumb.addEventListener("pointermove", move);
+    thumb.addEventListener("pointerup", end);
+    thumb.addEventListener("pointercancel", end);
+  });
+  // track: tap = jump there
+  track.addEventListener("pointerdown", (e) => {
+    if (e.target !== track) return;
+    const r = track.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientY - r.top - thumbH / 2) / Math.max(1, trackH - thumbH)));
+    el.scrollTo({ top: ratio * max(), behavior: "smooth" });
+  });
+  schedule();
+  return { update: schedule };
+}
+
+attachRail($("#active-list"), ".alarm-row");
+document.querySelectorAll("#view-points .table-wrap, #view-events .table-wrap")
+  .forEach((w) => attachRail(w, "tbody tr"));
 
 async function start() {
   L.dict = await api("/i18n.json");
