@@ -254,21 +254,51 @@ function renderStatusBand() {
 }
 
 // ---------------------------------------------------------------- overview
+// Summary tiles are also filters: tap one to list only its points in "Active alarms and faults",
+// tap again (or "Show all") to see everything. The filter resets by itself after 2 minutes
+// and whenever a new alarm comes in, so a new alarm is never hidden.
+const OV_FILTERS = {
+  a: (v) => v.kind === "A",
+  b: (v) => v.kind === "B",
+  c: (v) => v.kind === "C",
+  f: (v, p) => v.kind === "FAULT" || !!(p.runtime && p.runtime.fault),
+  d: (v) => v.kind === "DRIFT",
+  o: (v) => v.kind === "OFF",
+};
+let ovFilterTimer = 0;
+function setOvFilter(k) {
+  S.ovFilter = k;
+  clearTimeout(ovFilterTimer);
+  if (k) ovFilterTimer = setTimeout(() => setOvFilter(null), 120000);
+  if (S.status) renderOverview();
+  const list = $("#active-list");
+  if (list) list.scrollTop = 0;
+}
+
 function renderOverview() {
   const c = S.status.counts;
   const tiles = [
     ["a", t("cat.A"), c.A], ["b", t("cat.B"), c.B], ["c", t("cat.C"), c.C],
     ["f", t("cat.FAULT"), c.FAULT], ["d", t("cat.DRIFT"), c.DRIFT], ["o", t("ov.tile_off"), c.DISABLED],
   ];
-  if (changed("summary", [c, L.lang])) {
+  const F = S.ovFilter || null;
+  if (changed("summary", [c, L.lang, F])) {
     $("#summary").innerHTML = tiles.map(([k, l, n]) =>
-      `<div class="tile ${k} ${n ? "hot" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+      `<button type="button" class="tile ${k} ${n ? "hot" : ""} ${F === k ? "sel" : ""}" data-filter="${k}" title="${esc(t("ov.tile_hint"))}">
+        <div class="n">${n}</div><div class="l">${l}</div></button>`).join("");
+  }
+  const tile = tiles.find((x) => x[0] === F);
+  if (changed("activeTitle", [F, L.lang, tile && tile[2]])) {
+    $("#active-title").innerHTML = F
+      ? `<span>${esc(tile[1])} · ${tile[2]}</span><button type="button" class="chip-clear" data-filter="">✕ ${esc(t("ov.show_all"))}</button>`
+      : esc(t("ov.active"));
   }
 
-  const items = S.points.map((p) => ({ p, v: visual(p) })).filter((x) => x.v.active);
+  const items = S.points.map((p) => ({ p, v: visual(p) }))
+    .filter((x) => (F ? x.v.active !== undefined && OV_FILTERS[F](x.v, x.p) : x.v.active));
   items.sort((a, b) => a.v.rank - b.v.rank || a.p.id - b.p.id);
-  const lost = S.status.lost_modules || [];
-  const key = { items: items.map((x) => [x.p.id, x.v.text, x.v.cls]), lost };
+  const lost = !F || F === "f" ? (S.status.lost_modules || []) : [];
+  const key = { items: items.map((x) => [x.p.id, x.v.text, x.v.cls]), lost, F, lang: L.lang };
   if (changed("active", key)) {
     const rows = items.map(({ p, v }) => {
       const k = v.kind === "PENDING" ? "B" : v.kind === "OFF" ? "OFF" : v.kind;
@@ -283,7 +313,7 @@ function renderOverview() {
         <div><div class="name">${t("fault.MODULE_LOST")}</div><div class="sub">${t("ov.line_module", { l: line, m: mod })}</div></div>
         <div class="st">${t("ov.no_comm")}</div></div>`);
     }
-    $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">${t("ov.empty")}</div>`;
+    $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">${t(F ? "ov.filter_empty" : "ov.empty")}</div>`;
     markMore($("#active-list"));
   }
 
@@ -323,6 +353,14 @@ function markMore(el) {
 }
 $("#active-list").addEventListener("scroll", (e) => markMore(e.currentTarget));
 window.addEventListener("resize", () => markMore($("#active-list")));
+
+$("#summary").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-filter]");
+  if (b) setOvFilter(S.ovFilter === b.dataset.filter ? null : b.dataset.filter);
+});
+$("#active-title").addEventListener("click", (e) => {
+  if (e.target.closest("[data-filter]")) setOvFilter(null);
+});
 
 $("#active-list").addEventListener("click", (e) => {
   const row = e.target.closest("[data-point]");
@@ -813,6 +851,7 @@ function autoShowNewAlarm() {
     const v = visual(p);
     if (!v.unacked) continue;
     now.add(p.id);
+    if (!S.seenAlarms.has(p.id) && S.ovFilter) setOvFilter(null);  // never hide a new alarm
     if (!S.seenAlarms.has(p.id) && markerPageFor(p.id) && (!best || v.rank < best.v.rank)) best = { p, v };
   }
   S.seenAlarms = now;
