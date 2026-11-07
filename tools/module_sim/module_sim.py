@@ -6,7 +6,8 @@
 
 Χρήση (Windows):
     pip install pyserial
-    python module_sim.py COM5                 # ένα module, διεύθυνση 2 (L1-M02)
+    python module_sim.py                      # βρίσκει μόνο του τη USB-RS485, module L1-M02
+    python module_sim.py COM5                 # ή με συγκεκριμένη θύρα
     python module_sim.py COM5 -a 2 -a 3       # δύο modules
 
 Πλήκτρα όσο τρέχει:
@@ -446,12 +447,51 @@ def key_reader():
     return get, (lambda: termios.tcsetattr(fd, termios.TCSADRAIN, old))
 
 
+def find_ports():
+    """[(device, description, is_usb_rs485)] of the serial ports on this computer."""
+    from serial.tools import list_ports
+    out = []
+    for p in list_ports.comports():
+        desc = p.description or ""
+        rs485 = (p.vid == 0x0403) or "USB Serial" in desc or "FT232" in desc
+        if "STLink" in desc or "STMicro" in desc:
+            rs485 = False
+        out.append((p.device, desc, rs485))
+    return out
+
+
+def pick_port(port):
+    """'auto' (or nothing): the USB-RS485 adapter if there is exactly one."""
+    if port and port.lower() != "auto":
+        return port
+    ports = find_ports()
+    candidates = [d for d, _, r in ports if r]
+    if len(candidates) == 1:
+        print(f"Βρήκα τη USB-RS485 στη θύρα {candidates[0]}")
+        return candidates[0]
+    print("Δεν βρήκα με σιγουριά τη USB-RS485. Θύρες σε αυτόν τον υπολογιστή:")
+    for d, desc, _ in ports:
+        print(f"   {d:8} {desc}")
+    print("Γράψε τη θύρα, π.χ.:  python module_sim.py COM5")
+    return None
+
+
 def run(port, addresses, baud=38400, keys=True, modules=None, stop=None):
     """Main loop. Tests pass their own `modules` and a threading.Event `stop`."""
     if serial is None:
         print("Λείπει το pyserial. Γράψε:  pip install pyserial")
         return 1
-    ser = serial.Serial(port, baud, bytesize=8, parity="N", stopbits=1, timeout=0.005)
+    port = pick_port(port)
+    if port is None:
+        return 1
+    try:
+        ser = serial.Serial(port, baud, bytesize=8, parity="N", stopbits=1, timeout=0.005)
+    except serial.SerialException as e:
+        print(f"Δεν ανοίγει η θύρα {port}: {e}")
+        print("Είναι ανοιχτή σε άλλο πρόγραμμα (π.χ. PuTTY); Θύρες σε αυτόν τον υπολογιστή:")
+        for d, desc, _ in find_ports():
+            print(f"   {d:8} {desc}")
+        return 1
     modules = modules or [Module(a) for a in addresses]
     addresses = [m.address for m in modules]
     bus = Bus(modules)
@@ -514,7 +554,8 @@ def run(port, addresses, baud=38400, keys=True, modules=None, stop=None):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Προσομοιωτής I/O modules (Modbus RTU slave)")
-    p.add_argument("port", help="σειριακή θύρα του USB-RS485, π.χ. COM5 ή /dev/ttyUSB0")
+    p.add_argument("port", nargs="?", default="auto",
+                   help="σειριακή θύρα του USB-RS485, π.χ. COM5 (προεπιλογή: αυτόματη εύρεση)")
     p.add_argument("-a", "--address", type=int, action="append",
                    help="διεύθυνση module (μπορεί πολλές φορές). Προεπιλογή: 2")
     p.add_argument("-b", "--baud", type=int, default=38400)
