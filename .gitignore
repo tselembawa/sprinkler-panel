@@ -6,3 +6,4 @@ hmi/data/
 *.db
 *.db-wal
 *.db-shm
+firmware/build/
