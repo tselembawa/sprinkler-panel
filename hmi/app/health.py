@@ -21,6 +21,8 @@ import socket
 import threading
 import time
 
+from .sim_controller import ControllerUnavailable
+
 
 def sd_notify(message: str) -> bool:
     """Send a notification to systemd (Type=notify services). No-op outside systemd."""
@@ -64,9 +66,15 @@ class HealthMonitor:
     def check(self) -> dict:
         now = self._clock()
         checks = {}
+        link = True
         try:
             status = self._controller.get_status()
             checks["controller"] = isinstance(status, dict) and "relays" in status
+        except ControllerUnavailable:
+            # The real controller does not answer (cable, restart). Restarting the HMI would
+            # not help, so the server still counts as healthy; the UI shows the lost contact.
+            checks["controller"] = True
+            link = False
         except Exception:  # noqa: BLE001 - any failure means unhealthy
             checks["controller"] = False
         try:
@@ -82,6 +90,7 @@ class HealthMonitor:
             "uptime_s": int(now - self._started),
             "kiosk_age_s": int(now - since),
             "kiosk_seen": self._last_kiosk is not None,
+            "controller_link": link,
         }
         self.last_report = report
         return report

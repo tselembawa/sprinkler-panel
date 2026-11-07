@@ -53,6 +53,14 @@ class CommandError(Exception):
         self.detail = detail
 
 
+class ControllerUnavailable(Exception):
+    """No answer from the Main Controller (cable out, controller restarting, wrong port).
+
+    The HMI keeps running and shows "No contact with the controller"; alarm handling does
+    not depend on the HMI.
+    """
+
+
 @dataclass
 class _Config:
     version: int = 0
@@ -107,40 +115,7 @@ class SimController:
 
     # ------------------------------------------------------------ config flow
     def validate(self, points: list[dict]) -> list[dict]:
-        errors = []
-        seen_ids: set[int] = set()
-        seen_addr: dict[tuple, int] = {}
-
-        def err(pid, fld, code):
-            errors.append({"point_id": pid, "field": fld, "code": code})
-
-        for p in points:
-            pid = p.get("id")
-            for fld, (lo, hi) in P.LIMITS.items():
-                key = "id" if fld == "point_id" else fld
-                v = p.get(key)
-                if not isinstance(v, int) or not lo <= v <= hi:
-                    err(pid, key, "OUT_OF_RANGE")
-            if pid in seen_ids:
-                err(pid, "id", "DUPLICATE_ID")
-            seen_ids.add(pid)
-            addr = (p.get("line"), p.get("module"), p.get("channel"))
-            if addr in seen_addr:
-                err(pid, "channel", "DUPLICATE_ADDRESS")
-            seen_addr[addr] = pid
-            if p.get("category") not in P.CATEGORIES:
-                err(pid, "category", "INVALID")
-            if p.get("device_type") not in P.DEVICE_TYPES:
-                err(pid, "device_type", "INVALID")
-            if p.get("contact") not in P.CONTACTS:
-                err(pid, "contact", "INVALID")
-            d = p.get("delay_s")
-            if not isinstance(d, int) or not 0 <= d <= P.MAX_DELAY_S:
-                err(pid, "delay_s", "DELAY_NOT_ALLOWED")
-            for fld in ("lcd1", "lcd2"):
-                if len(p.get(fld) or "") > P.LCD_LINE_LEN:
-                    err(pid, fld, "TOO_LONG")
-        return errors
+        return P.validate_points(points)
 
     def upload_config(self, points: list[dict], user: int = 0) -> dict:
         """CFG_BEGIN + CFG_PUT + CFG_END + CFG_ACTIVATE in one call.

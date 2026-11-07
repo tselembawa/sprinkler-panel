@@ -756,8 +756,9 @@ $("#event-search").addEventListener("input", () => { clearTimeout(evTimer); evTi
 
 // ---------------------------------------------------------------- simulator
 function renderSim() {
-  if (!S.meta.simulator) return;
+  if (!S.meta.simulator && !S.meta.dev_key) return;
   $("#sim-key").checked = isTech();
+  if (!S.meta.simulator) return;   // real controller: only the key switch is played from here
   const key = [L.lang, S.points.map((p) => [p.id, p.name, p.runtime && p.runtime.condition])];
   if (changed("sim", key)) {
     const conds = [["NORMAL", t("cond.NORMAL"), ""], ["ACTIVE", t("cond.ACTIVE"), "active-btn"], ["OPEN", t("cond.OPEN"), "fault-btn"], ["SHORT", t("cond.SHORT"), "fault-btn"]];
@@ -882,7 +883,8 @@ async function refresh() {
     $("#led-drift").className = "led";
     buzzerSet(null);
     setBand("lost", "lost", t("band.lost"), t("band.lost_sub"));
-    if (lastStatusOk) toast(t("conn.lost"), "bad");
+    const ctrl = err.data && err.data.code === "CONTROLLER_UNAVAILABLE";
+    if (lastStatusOk) toast(ctrl ? errText(err) : t("conn.lost"), "bad");
     lastStatusOk = false;
   }
 }
@@ -1115,7 +1117,13 @@ async function start() {
   L.lang = L.dict.languages[settings.language] ? settings.language : "sv";
   applyStatic();
   fillDeviceTypes();
-  $("#tab-sim").hidden = !S.meta.simulator;
+  $("#tab-sim").hidden = !S.meta.simulator && !S.meta.dev_key;
+  if (!S.meta.simulator) {
+    $("#sim-inputs-card").hidden = true;
+    $("#sim-modules-card").hidden = true;
+    $("#sim-hint").dataset.i18n = "sim.dev_hint";
+    $("#sim-hint").textContent = t("sim.dev_hint");
+  }
   await refresh();
   await loadPages();
   setInterval(refresh, 700);

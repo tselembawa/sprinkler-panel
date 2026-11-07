@@ -2,35 +2,59 @@
 
 ```
 common/       Κοινά για controller και modules
-  modbus_map.h     Ο χάρτης registers (docs/modbus-map.md) σε C
-  modbus_rtu.c/.h  Modbus RTU master: CRC, εντολές 03/04/06/16, έλεγχος απαντήσεων
+  modbus_map.h       Ο χάρτης registers (docs/modbus-map.md) σε C
+  modbus_rtu.c/.h    Modbus RTU master: CRC, εντολές 03/04/06/16, έλεγχος απαντήσεων
+  pi_link_proto.h    Το πρωτόκολλο Raspberry Pi ↔ controller (docs/pi-link.md): τύποι, κωδικοί, μεγέθη
+  cobs.c/.h          COBS πλαισίωση + CRC-16/CCITT για τη σύνδεση με το Pi
 controller/   Main Controller (NUCLEO-G0B1RE)
   alarm.c/.h         Η λογική των συναγερμών (μεταφορά του εικονικού controller του HMI σε C)
   ctrl_modules.c/.h  Ζωή κάθε module: εκκίνηση, ρύθμιση, κυκλική ερώτηση, MODULE_LOST, γεγονότα
-  app.c/.h           Βήμα C2: modules → συναγερμοί → relays/LED/σειρήνες, πλήκτρα από το PuTTY
+  pi_link.c/.h       Η πλευρά του controller στη σύνδεση με το Pi: απαντά σε κάθε αίτημα
+  app.c/.h           Βήμα C3: modules → συναγερμοί → relays/LED/σειρήνες, σύνδεση με το Raspberry Pi
 tests/        Δοκιμές στο PC (gcc)
-  test_alarm.c       Τα 16 tests του εικονικού controller + 2 νέα, για τη C έκδοση
-  host_hal/          Μικρό «ψεύτικο» HAL: τρέχει όλο το app.c στο PC απέναντι στον προσομοιωτή
+  test_alarm.c       Τα tests του εικονικού controller + τα νέα, για τη C έκδοση
+  host_hal/          Μικρό «ψεύτικο» HAL: τρέχει όλο το app.c στο PC
 ```
 
-Τα `modbus_rtu` και `ctrl_modules` δεν εξαρτώνται από το hardware: δοκιμάζονται στο PC απέναντι
-στον προσομοιωτή modules (`tools/module_sim`). Μόνο το `app.c` χρησιμοποιεί το HAL της ST.
+Μόνο το `app.c` χρησιμοποιεί το HAL της ST. Όλα τα άλλα δοκιμάζονται στο PC: ο controller
+τρέχει ανάμεσα στον προσομοιωτή modules (`tools/module_sim`) και στον κώδικα του HMI
+(`hmi/app/serial_controller.py`).
 
-## Βήμα C1 στο STM32CubeIDE (project «Blink»)
+## Βήμα C3 στο STM32CubeIDE (project «Blink»)
 
-Ρυθμίσεις CubeMX: USART1 σε PC4/PC5, Asynchronous, 38400 8N1. USART2 (ST-LINK) 115200 (προεπιλογή).
+Ρυθμίσεις CubeMX (`.ioc`):
+- USART1 σε PC4/PC5, Asynchronous, 38400 8N1 (όπως πριν).
+- USART2 (ST-LINK) 115200 8N1 (όπως πριν) + **NVIC Settings → «USART2/LPUART2 global interrupt» ✔**.
+- **Project Manager → Linker Settings → Minimum Stack Size `0x1000`** (το πρόγραμμα μεγάλωσε).
+- Generate Code.
 
-1. Αντέγραψε στο `Core/Src`: `modbus_rtu.c`, `ctrl_modules.c`, `alarm.c`, `app.c`
-   και στο `Core/Inc`: `modbus_rtu.h`, `modbus_map.h`, `ctrl_modules.h`, `alarm.h`, `app.h`.
-2. Στο `main.c`:
-   - `USER CODE BEGIN Includes`: `#include "app.h"`
-   - `USER CODE BEGIN 2`: `app_init();`
-   - `USER CODE BEGIN 3`: μόνο `app_loop();`
-3. Build → Run.
+Αρχεία: στο `Core/Src` τα `modbus_rtu.c`, `ctrl_modules.c`, `alarm.c`, `pi_link.c`, `cobs.c`, `app.c`
+και στο `Core/Inc` τα `modbus_rtu.h`, `modbus_map.h`, `ctrl_modules.h`, `alarm.h`, `pi_link.h`,
+`pi_link_proto.h`, `cobs.h`, `app.h`. Το `main.c` μένει όπως στο C2
+(`#include "app.h"`, `app_init();`, `app_loop();`).
 
-Στο PC:
-- PuTTY στη θύρα COM του **ST-LINK** («STMicroelectronics STLink Virtual COM Port»), 115200: εκεί τυπώνει ο controller.
-- `python tools\module_sim\module_sim.py COMx` στη θύρα COM της **USB-RS485**: εκεί «ζει» το module L1-M02.
+Η θύρα του ST-LINK δεν είναι πια για το PuTTY: μιλάει δυαδικά με το HMI. Τα μηνύματα που
+έβγαιναν στο PuTTY φαίνονται τώρα στο παράθυρο του HMI (`CONTROLLER: ...`).
+
+### Δοκιμή με το HMI στο PC (Windows)
+
+1. Κλείσε το PuTTY.
+2. Προσομοιωτής module στη θύρα της USB-RS485 (όπως πριν):
+   `python tools\module_sim\module_sim.py COMy`
+3. Το HMI με τον πραγματικό controller (η θύρα του ST-LINK βρίσκεται μόνη της):
+   ```
+   cd hmi
+   pip install -r requirements.txt
+   set SPRINKLER_CONTROLLER=serial
+   python -m uvicorn app.main:app --port 8000
+   ```
+   (ή `set SPRINKLER_CONTROLLER=serial:COMx` για συγκεκριμένη θύρα). Browser: http://localhost:8000
+4. Η καρτέλα «Simulator» έχει μόνο τον κλειδοδιακόπτη (μέχρι να μπει ο πραγματικός).
+
+### Στο Raspberry Pi
+
+Το Nucleo στο USB του Pi (`/dev/ttyACM0`):
+`SPRINKLER_CONTROLLER=serial bash hmi/scripts/install-pi.sh` και reboot.
 
 ## Δοκιμές στο PC
 
@@ -41,6 +65,10 @@ gcc $CF -o /tmp/test_modbus_rtu tests/test_modbus_rtu.c common/modbus_rtu.c && /
 gcc $CF -o /tmp/test_alarm tests/test_alarm.c controller/alarm.c && /tmp/test_alarm
 gcc $CF -o /tmp/host_ctrl tests/host_ctrl.c common/modbus_rtu.c controller/ctrl_modules.c
 gcc -std=gnu11 -Wall -Wextra -Werror -Itests/host_hal -Icommon -Icontroller -o /tmp/host_app \
-    tests/host_hal/host_hal.c controller/app.c controller/alarm.c controller/ctrl_modules.c common/modbus_rtu.c
+    tests/host_hal/host_hal.c controller/app.c controller/alarm.c controller/ctrl_modules.c \
+    controller/pi_link.c common/modbus_rtu.c common/cobs.c
 cd .. && HOST_CTRL=/tmp/host_ctrl HOST_APP=/tmp/host_app python -m pytest tools/module_sim   # θέλει pyserial
 ```
+
+Όλο το σύστημα σε ένα Linux PC χωρίς hardware: `python tools/module_sim/dev_bench.py /tmp/host_app`
+και μετά το HMI με το `SPRINKLER_CONTROLLER=serial:/dev/pts/N` που τυπώνει.

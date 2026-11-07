@@ -191,7 +191,7 @@
     <section class="view" id="view-sim">
       <div class="card">
         <h2 data-i18n="tab.sim">Simulator</h2>
-        <p class="hint" data-i18n="sim.hint"></p>
+        <p class="hint" data-i18n="sim.hint" id="sim-hint"></p>
         <div class="row">
           <label class="switch"><input type="checkbox" id="sim-key"><span></span> <span data-i18n="sim.key">Nyckelbrytare i läge TEKNIKER</span></label>
         </div>
@@ -200,11 +200,11 @@
         </div>
         <p class="hint" data-i18n="sim.sound_hint"></p>
       </div>
-      <div class="card">
+      <div class="card" id="sim-inputs-card">
         <h2 data-i18n="sim.inputs">Ingångar</h2>
         <div id="sim-inputs" class="sim-inputs"></div>
       </div>
-      <div class="card">
+      <div class="card" id="sim-modules-card">
         <h2 data-i18n="sim.modules">Moduler</h2>
         <div id="sim-modules" class="row wrap"></div>
       </div>

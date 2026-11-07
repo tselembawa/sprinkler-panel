@@ -13,8 +13,8 @@
 
 GPIO_TypeDef host_gpioa, host_gpioc;
 static USART_TypeDef usart1, usart2;
-UART_HandleTypeDef huart1 = {&usart1, -1, -1};
-UART_HandleTypeDef huart2 = {&usart2, 0, 1};
+UART_HandleTypeDef huart1 = {&usart1, -1, -1, HAL_UART_STATE_READY, 0};
+UART_HandleTypeDef huart2 = {&usart2, 0, 1, HAL_UART_STATE_READY, 0};
 static uint32_t t0;
 
 static uint32_t ms(void)
@@ -65,11 +65,33 @@ void HAL_GPIO_TogglePin(GPIO_TypeDef *port, uint16_t pin) { (void)port; (void)pi
 
 int host_uart_flag(UART_HandleTypeDef *h, uint32_t flag)
 {
-    if (h != &huart2 || flag != UART_FLAG_RXNE || !readable(0, 0)) return 0;
-    char c;
-    if (read(0, &c, 1) != 1) exit(0);   /* stdin closed: end of test */
-    h->Instance->RDR = (uint8_t)c;
-    return 1;
+    (void)h; (void)flag;
+    return 0;
+}
+
+HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *h, uint8_t *p, uint16_t size)
+{
+    (void)size;
+    if (h->RxState != HAL_UART_STATE_READY) return HAL_BUSY;
+    h->rx_ptr = p;
+    h->RxState = HAL_UART_STATE_BUSY_RX;
+    return HAL_OK;
+}
+
+/* the "interrupt": deliver what arrived on stdin, one byte per callback */
+static void deliver_rx(void)
+{
+    uint8_t buf[256];
+    while (readable(huart2.fd_in, 0)) {
+        ssize_t n = read(huart2.fd_in, buf, sizeof(buf));
+        if (n <= 0) exit(0);   /* the other side closed: end of test */
+        for (ssize_t i = 0; i < n; i++) {
+            if (huart2.RxState != HAL_UART_STATE_BUSY_RX) continue;   /* not listening: lost */
+            *huart2.rx_ptr = buf[i];
+            huart2.RxState = HAL_UART_STATE_READY;
+            HAL_UART_RxCpltCallback(&huart2);
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -78,10 +100,12 @@ int main(int argc, char **argv)
     huart1.fd_in = huart1.fd_out = atoi(argv[1]);
     struct termios t;
     if (tcgetattr(huart1.fd_in, &t) == 0) { cfmakeraw(&t); tcsetattr(huart1.fd_in, TCSANOW, &t); }
+    if (tcgetattr(0, &t) == 0) { cfmakeraw(&t); tcsetattr(0, TCSANOW, &t); }
     setvbuf(stdout, NULL, _IONBF, 0);
     t0 = ms();
     app_init();
     for (;;) {
+        deliver_rx();
         app_loop();
         usleep(1000);
     }

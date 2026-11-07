@@ -291,7 +291,7 @@ static int same_cfg(const alm_point_cfg_t *x, const alm_point_cfg_t *y)
            strncmp(x->lcd1, y->lcd1, ALM_LCD_LEN) == 0 && strncmp(x->lcd2, y->lcd2, ALM_LCD_LEN) == 0;
 }
 
-static uint16_t validate(const alm_point_cfg_t *pts, uint16_t n, alm_cfg_error_t *errs, uint16_t max)
+uint16_t alm_validate(const alm_point_cfg_t *pts, uint16_t n, alm_cfg_error_t *errs, uint16_t max)
 {
     uint16_t count = 0;
 #define ERR(pid, fld, cd) do { if (count < max && errs) { errs[count].point_id = (pid); \
@@ -337,7 +337,7 @@ uint16_t alm_load(alm_t *a, const alm_point_cfg_t *pts, uint16_t n, uint8_t user
                   alm_cfg_error_t *errors, uint16_t max_errors)
 {
     a->now_ms = now_ms;
-    uint16_t nerr = validate(pts, n, errors, max_errors);
+    uint16_t nerr = alm_validate(pts, n, errors, max_errors);
     if (nerr) {
         return nerr;
     }
@@ -409,6 +409,33 @@ void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_
 void alm_set_key(alm_t *a, int tech)
 {
     a->key_tech = tech ? 1u : 0u;
+}
+
+void alm_set_hmi_lost(alm_t *a, int lost, uint32_t now_ms)
+{
+    a->now_ms = now_ms;
+    if (lost && !a->hmi_lost) {
+        a->hmi_lost = 1;
+        a->hmi_lost_since_ms = now_ms;
+        event(a, EVT_HMI_LOST, SRC_SYSTEM, 0, 0, 0, 0);
+    } else if (!lost && a->hmi_lost) {
+        a->hmi_lost = 0;
+        event(a, EVT_HMI_BACK, SRC_SYSTEM, 0, 0, 0, 0);
+    }
+}
+
+uint8_t alm_condition(const alm_t *a, int i)
+{
+    return (uint8_t)condition(a, i);
+}
+
+int16_t alm_pending_left_s(const alm_t *a, int i, uint32_t now_ms)
+{
+    if (a->rt[i].state != PS_PENDING) {
+        return -1;
+    }
+    uint32_t gone = (now_ms - a->rt[i].pending_since_ms) / 1000u;
+    return gone >= a->cfg[i].delay_s ? 0 : (int16_t)(a->cfg[i].delay_s - gone);
 }
 
 void alm_tick(alm_t *a, uint32_t now_ms)
@@ -547,6 +574,22 @@ alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t n
     return ALM_OK;
 }
 
+alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms)
+{
+    a->now_ms = now_ms;
+    if (alm_time(a, now_ms) >= 946684800u) {   /* already set */
+        return ALM_ACCESS_DENIED;
+    }
+    if (unix_time < 946684800u || unix_time > 4102444800u) {
+        return ALM_BAD_TIME;
+    }
+    uint32_t old = alm_time(a, now_ms);
+    /* events logged before this moment keep their old (1970) time stamps */
+    a->time_offset = (int64_t)unix_time - (int64_t)(now_ms / 1000u);
+    event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, 0);
+    return ALM_OK;
+}
+
 /* ---- status ------------------------------------------------------------------------------- */
 uint8_t alm_display_category(const alm_t *a, int i)
 {
@@ -580,7 +623,10 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
         if (cat == CAT_FAULT && alarm) fault_points++;
         if (cat != CAT_DRIFT && alarm && !rt->acked) unacked = 1;
     }
-    s->fault = (uint16_t)(fault_points + a->lost_count);
+    s->hmi_lost = a->hmi_lost;
+    const int hmi_fault = a->hmi_lost && !a->service_active &&
+                          now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS;
+    s->fault = (uint16_t)(fault_points + a->lost_count + (hmi_fault ? 1u : 0u));
 
     uint8_t logical = 0;
     if (s->a) logical |= ALM_K1_A;
@@ -634,7 +680,7 @@ const char *alm_event_name(uint8_t t)
         "STARTUP", "CONFIG_ACTIVATED", "DELAY_STARTED", "DELAY_CANCELLED", "ALARM_ON",
         "ALARM_CLEARED", "LINE_OPEN", "LINE_SHORT", "LINE_OK", "MODULE_LOST", "MODULE_BACK",
         "ACK", "RESET", "SILENCE", "UNSILENCE", "RESOUND", "SERVICE_ON", "SERVICE_OFF",
-        "POINT_DISABLED", "POINT_ENABLED", "TIME_SET"};
+        "POINT_DISABLED", "POINT_ENABLED", "TIME_SET", "HMI_LOST", "HMI_BACK"};
     return t < EVT_COUNT ? names[t] : "?";
 }
 

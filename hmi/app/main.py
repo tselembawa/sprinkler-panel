@@ -27,7 +27,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import protocol as P
-from .controller_link import CommandError, make_controller
+from .controller_link import CommandError, ControllerUnavailable, make_controller
 from .db import Database
 from .health import HealthMonitor
 
@@ -40,7 +40,7 @@ ALLOWED_IMAGES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 db = Database(DATA / "sprinkler.db")
-controller = make_controller(start_seq=db.last_event_seq())
+controller = make_controller(start_seq=db.last_event_seq(), store=db)
 health = HealthMonitor(controller, db)
 
 I18N = json.loads((BASE / "static" / "i18n.json").read_text(encoding="utf-8"))
@@ -86,12 +86,23 @@ class Background:
             controller.tick()
 
     def _sync(self):
+        offline = False
         while not self._stop.wait(0.5):
             try:
+                push_config_if_needed()
                 sync_events()
-                health.sync_ran()
+                if offline:
+                    print("controller: contact again", flush=True)
+                offline = False
+            except ControllerUnavailable as e:
+                # the server itself is fine while the controller is away (the UI shows it)
+                if not offline:
+                    print("controller: no contact -", e, flush=True)
+                offline = True
             except Exception as e:  # noqa: BLE001 - keep the loop alive, health reports it
                 print("event sync failed:", e, flush=True)
+                continue
+            health.sync_ran()
 
 
 def sync_events():
@@ -104,19 +115,35 @@ def sync_events():
         last = batch[-1]["seq"]
 
 
+CONFIG_LOCK = threading.Lock()
+_rejected_crc: int | None = None
+
+
 def push_config_if_needed():
-    """At start-up the Pi makes sure the controller runs the stored configuration."""
-    points = db.points()
-    if controller.config_info()["crc"] != P.config_crc(points):
+    """The Pi makes sure the controller runs the stored configuration: at start-up, and
+    whenever the controller lost it (restart without stored configuration, new controller)."""
+    global _rejected_crc
+    with CONFIG_LOCK:
+        points = db.points()
+        want = P.config_crc(points)
+        if controller.config_info()["crc"] == want or _rejected_crc == want:
+            return
         res = controller.upload_config(points)
-        if not res["ok"]:
-            print("WARNING: stored configuration rejected by controller:", res["errors"])
+        if res["ok"]:
+            print(f"controller: configuration v{res['version']} sent ({len(points)} points)", flush=True)
+            _rejected_crc = None
+        else:
+            _rejected_crc = want   # do not repeat it every half second
+            print("WARNING: stored configuration rejected by controller:", res["errors"], flush=True)
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
-    push_config_if_needed()
-    sync_events()
+    try:
+        push_config_if_needed()
+        sync_events()
+    except ControllerUnavailable as e:
+        print("controller: no contact at start-up -", e, flush=True)
     bg = Background()
     bg.start()
     health.start()  # READY=1 to systemd, then feeds the watchdog while healthy
@@ -160,14 +187,15 @@ def parse_point(body: dict) -> dict:
 
 def save_points(points: list[dict]):
     """Upload to the controller; store on the Pi only if the controller confirms."""
-    res = controller.upload_config(points)
-    if not res["ok"]:
-        return err("CONFIG_REJECTED", 422, errors=res["errors"])
-    expected = P.config_crc(points)
-    info = controller.config_info()
-    if info["crc"] != expected:
-        return err("CRC_MISMATCH", 500)
-    db.replace_points(points)
+    with CONFIG_LOCK:
+        res = controller.upload_config(points)
+        if not res["ok"]:
+            return err("CONFIG_REJECTED", 422, errors=res["errors"])
+        expected = P.config_crc(points)
+        info = controller.config_info()
+        if info["crc"] != expected:
+            return err("CRC_MISMATCH", 500)
+        db.replace_points(points)
     return JSONResponse({"saved": True, "version": info["version"], "crc": f"{info['crc']:08X}"})
 
 
@@ -183,6 +211,7 @@ async def api_meta(request: Request):
         "lcd_line_len": P.LCD_LINE_LEN,
         "limits": P.LIMITS,
         "simulator": hasattr(controller, "sim_set_input"),
+        "dev_key": hasattr(controller, "dev_set_key"),
     })
 
 
@@ -403,10 +432,13 @@ async def api_reboot(request: Request):
 
 # --- simulator only
 async def api_sim(request: Request):
-    if not hasattr(controller, "sim_set_input"):
-        return err("NOT_FOUND", 404)
     what = request.path_params["what"]
     body = await request.json()
+    if what == "key" and hasattr(controller, "dev_set_key"):
+        controller.dev_set_key(bool(body["tech"]))   # prototype: the HMI plays the key switch
+        return JSONResponse({"ok": True})
+    if not hasattr(controller, "sim_set_input"):
+        return err("NOT_FOUND", 404)
     try:
         if what == "input":
             controller.sim_set_input(int(body["line"]), int(body["module"]), int(body["channel"]),
@@ -470,4 +502,9 @@ routes = [
     Mount("/", NoCacheStatic(directory=BASE / "static", html=True), name="static"),
 ]
 
-app = Starlette(routes=routes, lifespan=lifespan)
+async def controller_unavailable(request: Request, exc: ControllerUnavailable):
+    return err("CONTROLLER_UNAVAILABLE", 503)
+
+
+app = Starlette(routes=routes, lifespan=lifespan,
+                exception_handlers={ControllerUnavailable: controller_unavailable})

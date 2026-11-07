@@ -2,8 +2,13 @@
 # (__USER__ and __DIR__ are filled in by the installer).
 #
 # Watchdog (level 1): the app sends WATCHDOG=1 to systemd only while it is healthy
-# (controller answers, database answers, event sync running). If the pings stop for
-# WatchdogSec, systemd kills and restarts the service.
+# (database answers, event sync running, controller object answers). If the pings stop
+# for WatchdogSec, systemd kills and restarts the service. A real controller that does
+# not answer (cable out) does NOT restart the HMI: it shows "No contact with the controller".
+#
+# SPRINKLER_CONTROLLER: sim = virtual controller inside the HMI;
+#                       serial = the real controller on USB (Nucleo ST-LINK, found automatically),
+#                       serial:/dev/ttyACM0 = a given port.
 #
 # Logs:   journalctl -u sprinkler-hmi -f
 
@@ -18,7 +23,7 @@ NotifyAccess=main
 WatchdogSec=30
 User=__USER__
 WorkingDirectory=__DIR__/hmi
-Environment=SPRINKLER_CONTROLLER=sim
+Environment=SPRINKLER_CONTROLLER=__CONTROLLER__
 Environment=PYTHONUNBUFFERED=1
 # Allows the technician to restart the panel from Settings (see the sudoers rule in install-pi.sh)
 Environment=SPRINKLER_REBOOT=1

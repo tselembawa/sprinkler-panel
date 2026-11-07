@@ -3,7 +3,9 @@
 #
 # Run once as the normal user (not root), from the repository:
 #     cd ~/sprinkler-panel && bash hmi/scripts/install-pi.sh
-# then reboot.
+# then reboot. With the real controller (Nucleo on a USB port of the Pi):
+#     SPRINKLER_CONTROLLER=serial bash hmi/scripts/install-pi.sh
+# (default: sim, the virtual controller inside the HMI).
 #
 # What it sets up:
 #   1. Python environment and packages
@@ -21,6 +23,7 @@ fi
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 USER_NAME="$(id -un)"
+CONTROLLER="${SPRINKLER_CONTROLLER:-sim}"
 echo "== Sprinkler panel: installing from $DIR for user $USER_NAME"
 
 # --- 1. Python environment -------------------------------------------------------
@@ -34,13 +37,16 @@ python3 -m venv "$DIR/hmi/.venv"
 chmod +x "$DIR/hmi/scripts/kiosk.sh" "$DIR/hmi/scripts/kiosk-watchdog.sh"
 
 install_unit() {  # $1 = unit file name in hmi/scripts
-  sed -e "s|__USER__|$USER_NAME|g" -e "s|__DIR__|$DIR|g" "$DIR/hmi/scripts/$1" \
+  sed -e "s|__USER__|$USER_NAME|g" -e "s|__DIR__|$DIR|g" -e "s|__CONTROLLER__|$CONTROLLER|g" "$DIR/hmi/scripts/$1" \
     | sudo tee "/etc/systemd/system/$1" >/dev/null
 }
 
 # --- 2. HMI server service ---------------------------------------------------------
 echo "== 2/5 Server service with systemd watchdog"
 install_unit sprinkler-hmi.service
+echo "   controller: $CONTROLLER"
+# the serial port of the controller (/dev/ttyACM0) belongs to the group dialout
+sudo usermod -aG dialout "$USER_NAME"
 # The panel may restart the Pi (Settings -> Restart, technician key only): allow exactly
 # this one command without a password, nothing else.
 SUDOERS_TMP="$(mktemp)"

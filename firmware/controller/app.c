@@ -1,14 +1,18 @@
 /*
- * Controller application, step C2 - see app.h.
+ * Controller application, step C3 - see app.h.
  *
  * The modules on RS485 line 1 feed the alarm engine; the engine decides alarms, relays,
- * LEDs, buzzer and sounders. Everything is printed to the PC, and the PC keyboard (PuTTY)
- * plays the panel buttons until the Raspberry Pi is connected.
+ * LEDs, buzzer and sounders. The Raspberry Pi (HMI) talks to the controller over the
+ * ST-LINK USB port with the framed protocol of docs/pi-link.md: it reads status, points
+ * and events, sends the configuration and the panel commands. What used to be printed
+ * to PuTTY now goes to the Pi as LOG frames.
  *
  * Hardware (NUCLEO-G0B1RE):
- *   USART1  PC4 (D1, TX) / PC5 (D0, RX)  -> XY-485 -> RS485 line 1, 38400 8N1
- *   USART2  PA2 / PA3                    -> ST-LINK virtual COM port -> PuTTY, 115200
- *   PA5     green LED LD4                -> blinks on every poll
+ *   USART1  PC4 (D1, TX) / PC5 (D0, RX)  -> XY-485 -> RS485 line 1, 38400 8N1 (blocking)
+ *   USART2  PA2 / PA3                    -> ST-LINK virtual COM port -> Raspberry Pi / PC,
+ *                                           115200, RX by interrupt (CubeMX: NVIC
+ *                                           "USART2/LPUART2 global interrupt" enabled)
+ *   PA5     green LED LD4                -> blinks on every poll cycle
  *   PC13    blue button B1               -> Kvittera (like the button on the panel)
  */
 #include "app.h"
@@ -22,38 +26,100 @@
 #include "ctrl_modules.h"
 #include "modbus_map.h"
 #include "modbus_rtu.h"
+#include "pi_link.h"
 
 extern UART_HandleTypeDef huart1;   /* RS485 line 1 */
-extern UART_HandleTypeDef huart2;   /* PC terminal */
+extern UART_HandleTypeDef huart2;   /* Raspberry Pi (ST-LINK virtual COM port) */
 
 #define POLL_PERIOD_MS     500u     /* one cycle over all modules of the line */
 #define TICK_PERIOD_MS     100u     /* alarm engine timers (delays, service mode) */
 #define ANSWER_TIMEOUT_MS  100u     /* 50 ms in the map; 100 ms while the PC plays the modules */
 #define FRAME_GAP_MS       2u       /* >= 3.5 characters between frames (1.75 ms at 38400) */
 #define BUTTON_DEBOUNCE_MS 30u
-#define LINE1              1u
+#define MAX_MODULES        16u      /* prototype: line 1 only */
+#define SOUNDER_LINE       1u       /* first output rule: the sounders are OUT1 of L1-M02 */
+#define SOUNDER_ADDR       2u
+#define WIRED_LINES        1u       /* only line 1 has an RS485 port on the prototype */
 
-/* ---- configuration (later it comes from the Raspberry Pi) ------------------------------ */
-static const alm_point_cfg_t config[] = {
+/* ---- configuration until the Raspberry Pi sends its own --------------------------------- */
+static const alm_point_cfg_t default_config[] = {
     /* id line mod ch  category  device type        NC  delay en sect  LCD line 1     LCD line 2 */
     {1,  1,   2,  1,  CAT_B,    DT_SERVICEVENTIL,  1,  0,    1, 1,   "SERVICEVENTIL", "SEKTION 1"},
     {2,  1,   2,  2,  CAT_A,    DT_PRESSOSTAT,     0,  0,    1, 1,   "PRESSOSTAT",    "SEKTION 1"},
 };
-#define POINT_COUNT ((uint16_t)(sizeof(config) / sizeof(config[0])))
+#define DEFAULT_COUNT ((uint16_t)(sizeof(default_config) / sizeof(default_config[0])))
 
 static alm_t engine;                /* ~40 kB, static */
 static mb_master_t line1;
-static ctrl_module_t modules[1];
-#define MODULE_COUNT (sizeof(modules) / sizeof(modules[0]))
+static ctrl_module_t modules[MAX_MODULES];
+static uint8_t module_count;
+static uint32_t modules_for_version = 0xFFFFFFFFu;
+static pi_link_t pi;
 
-static uint32_t next_poll, next_tick, last_frame_end;
+static uint32_t next_cycle, next_tick, last_frame_end;
+static uint8_t poll_index;
 static GPIO_PinState button_idle, button_last;
 static uint32_t button_changed_at;
 static uint8_t button_pressed;
-static alm_status_t shown;          /* last printed outputs */
+static alm_status_t shown;          /* last reported outputs */
 static uint8_t shown_valid;
 
-/* ---- printing to the PC ---------------------------------------------------------------- */
+/* ---- bytes from the Pi: interrupt -> ring buffer -> pi_link in the main loop ----------- */
+#define RX_RING 512u                /* power of two */
+static volatile uint16_t rx_head, rx_tail;
+static uint8_t rx_ring[RX_RING];
+static uint8_t rx_byte;
+static volatile uint32_t rx_dropped;
+
+static void rx_start(void)
+{
+    HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart != &huart2) {
+        return;
+    }
+    uint16_t next = (uint16_t)((rx_head + 1u) & (RX_RING - 1u));
+    if (next != rx_tail) {
+        rx_ring[rx_head] = rx_byte;
+        rx_head = next;
+    } else {
+        rx_dropped++;
+    }
+    rx_start();
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart2) {   /* overrun, noise...: the frame CRC catches it, keep listening */
+        rx_start();
+    }
+}
+
+static void service_pi(void)
+{
+    const uint32_t now = HAL_GetTick();
+    while (rx_tail != rx_head) {
+        uint8_t b = rx_ring[rx_tail];
+        rx_tail = (uint16_t)((rx_tail + 1u) & (RX_RING - 1u));
+        pi_link_rx_byte(&pi, b, now);
+    }
+    if (huart2.RxState == HAL_UART_STATE_READY) {
+        rx_start();             /* reception stopped after an error: start it again */
+    }
+}
+
+static void pi_write(void *ctx, const uint8_t *data, uint16_t len)
+{
+    HAL_UART_Transmit((UART_HandleTypeDef *)ctx, (uint8_t *)data, len, 200u);
+}
+
+/* ---- text for the Pi's log (LOG frames, one per line) ---------------------------------------- */
+static char log_line[200];
+static size_t log_len;
+
 static void out(const char *fmt, ...)
 {
     char buf[200];
@@ -67,13 +133,23 @@ static void out(const char *fmt, ...)
     if (n >= (int)sizeof(buf)) {
         n = (int)sizeof(buf) - 1;
     }
-    HAL_UART_Transmit(&huart2, (uint8_t *)buf, (uint16_t)n, 100);
-}
-
-static void stamp(void)
-{
-    uint32_t t = HAL_GetTick();
-    out("[%5lu.%03lu] ", (unsigned long)(t / 1000u), (unsigned long)(t % 1000u));
+    for (int i = 0; i < n; i++) {
+        char c = buf[i];
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n' || log_len >= sizeof(log_line) - 1u) {
+            log_line[log_len] = '\0';
+            if (log_len) {
+                pi_link_log(&pi, log_line);
+            }
+            log_len = 0;
+            if (c == '\n') {
+                continue;
+            }
+        }
+        log_line[log_len++] = c;
+    }
 }
 
 /* ---- RS485 transport for the Modbus master ---------------------------------------------- */
@@ -115,184 +191,147 @@ static void on_module_event(void *ctx, const ctrl_module_t *m, ctrl_event_t ev,
     switch (ev) {
     case EV_INPUT_CHANGED:
         alm_set_input(&engine, m->line, m->addr, (uint8_t)(index + 1u), (uint8_t)new_v, now);
-        return;   /* what it means is printed by the engine events */
+        return;   /* what it means is reported by the engine events */
     case EV_MODULE_ONLINE:
         alm_set_module_lost(&engine, m->line, m->addr, 0, now);
-        stamp();
-        out("Modul L%u-M%02u ONLINE  fw %u.%u\r\n", m->line, m->addr,
+        out("Modul L%u-M%02u ONLINE  fw %u.%u\n", m->line, m->addr,
             m->fw_version >> 8, m->fw_version & 0xFFu);
         return;
     case EV_MODULE_LOST:
     case EV_MODULE_WRONG_TYPE:
     case EV_MODULE_WRONG_LINE:
         alm_set_module_lost(&engine, m->line, m->addr, 1, now);
-        stamp();
-        out("Modul L%u-M%02u %s\r\n", m->line, m->addr,
+        out("Modul L%u-M%02u %s\n", m->line, m->addr,
             ev == EV_MODULE_LOST ? "SAKNAS" : ev == EV_MODULE_WRONG_TYPE ? "FEL MODULTYP" : "FEL LINJE");
         return;
     case EV_MODULE_RESTARTED:
-        stamp();
-        out("Modul L%u-M%02u startade om, konfigureras igen\r\n", m->line, m->addr);
+        out("Modul L%u-M%02u startade om, konfigureras igen\n", m->line, m->addr);
         return;
     case EV_STATUS_CHANGED:
-        stamp();
-        out("Modul L%u-M%02u status 0x%04X%s\r\n", m->line, m->addr, new_v,
+        out("Modul L%u-M%02u status 0x%04X%s\n", m->line, m->addr, new_v,
             (new_v & MB_ST_SUPPLY_LOW) ? "  LAG MATNING" : "");
         (void)old_v;
         return;
     case EV_INPUT_TRANSIENT:
-        stamp();
-        out("Modul L%u-M%02u IN%u kort puls\r\n", m->line, m->addr, index + 1u);
+        out("Modul L%u-M%02u IN%u kort puls\n", m->line, m->addr, index + 1u);
         return;
     default:
-        return;   /* comm errors before LOST etc.: not printed at this step */
+        return;
     }
 }
 
-/* ---- events from the alarm engine --------------------------------------------------------- */
-static const char *point_name(uint16_t id)
-{
-    for (uint16_t i = 0; i < POINT_COUNT; i++) {
-        if (config[i].id == id) {
-            return config[i].lcd1;
-        }
-    }
-    return "?";
-}
-
+/* ---- events from the alarm engine: the Pi reads them with GET_EVENTS; short log line ---- */
 static void on_alarm_event(void *ctx, const alm_event_t *e)
 {
     (void)ctx;
-    stamp();
-    out("#%-4lu ", (unsigned long)e->seq);
-    switch (e->type) {
-    case EVT_ALARM_ON:
-    case EVT_ALARM_CLEARED:
-    case EVT_DELAY_STARTED:
-    case EVT_DELAY_CANCELLED: {
-        int i = alm_find(&engine, e->source_id);
-        char cat = i >= 0 ? (char)alm_display_category(&engine, i) : '?';
-        out("P%u %-14s %-15s %s -> %s  (%c)\r\n", e->source_id, point_name(e->source_id),
-            alm_event_name(e->type), alm_state_name((uint8_t)e->old_v),
-            alm_state_name((uint8_t)e->new_v), cat);
-        break;
-    }
-    case EVT_LINE_OPEN:  out("P%u %-14s FEL: Avbrott\r\n", e->source_id, point_name(e->source_id)); break;
-    case EVT_LINE_SHORT: out("P%u %-14s FEL: Kortslutning\r\n", e->source_id, point_name(e->source_id)); break;
-    case EVT_LINE_OK:    out("P%u %-14s linjen OK igen\r\n", e->source_id, point_name(e->source_id)); break;
-    case EVT_MODULE_LOST: out("FEL: modul %u saknas\r\n", e->source_id); break;
-    case EVT_MODULE_BACK: out("modul %u tillbaka\r\n", e->source_id); break;
-    case EVT_SERVICE_ON:  out("SERVICELAGE %ld min - inget overfors\r\n", (long)e->new_v); break;
-    case EVT_SERVICE_OFF: out("Servicelage slut (%s)\r\n", e->new_v ? "manuellt" : "tiden ute"); break;
-    case EVT_RESOUND:     out("Nytt larm: larmdonen ljuder igen\r\n"); break;
-    default:              out("%s\r\n", alm_event_name(e->type)); break;
+    if (e->kind == SRC_POINT) {
+        out("#%lu %s P%u\n", (unsigned long)e->seq, alm_event_name(e->type), e->source_id);
+    } else if (e->kind == SRC_MODULE) {
+        out("#%lu %s L%u-M%02u\n", (unsigned long)e->seq, alm_event_name(e->type),
+            e->source_id / 1000u, e->source_id % 1000u);
+    } else {
+        out("#%lu %s\n", (unsigned long)e->seq, alm_event_name(e->type));
     }
 }
 
-/* ---- outputs: print when something changed --------------------------------------------------- */
-static void show_outputs(int force)
+/* ---- outputs: report when something changed ------------------------------------------------ */
+static void show_outputs(void)
 {
     alm_status_t s;
     alm_status(&engine, HAL_GetTick(), &s);
-    if (!force && shown_valid && s.relays == shown.relays && s.led_red_a == shown.led_red_a &&
-        s.led_yellow_b == shown.led_yellow_b && s.led_yellow_fault == shown.led_yellow_fault &&
-        s.led_green_drift == shown.led_green_drift && s.led_yellow_service == shown.led_yellow_service &&
-        s.buzzer == shown.buzzer && s.sounders == shown.sounders && s.key_tech == shown.key_tech) {
+    if (shown_valid && s.relays == shown.relays && s.buzzer == shown.buzzer &&
+        s.sounders == shown.sounders) {
         return;
     }
     shown = s;
     shown_valid = 1;
-    static const char *const ledb[] = {"av", "fast", "BLINKAR"};
     static const char *const snd[] = {"tysta", "LJUDER", "tystade"};
-    out("          RELAN: K1 A=%s  K2 B=%s  K3 Fel=%s  K4 C=%s%s\r\n",
-        (s.relays & ALM_K1_A) ? "TILL" : "fran", (s.relays & ALM_K2_B) ? "TILL" : "fran",
-        (s.relays & ALM_K3_FAULT_OK) ? "OK(dragen)" : "FEL(slappt)", (s.relays & ALM_K4_C) ? "TILL" : "fran",
-        s.transmission_blocked ? "   [SERVICE: blockerat]" : "");
-    out("          LED: A=%s B/C=%s Fel=%s Drift=%s Service=%s | Summer=%s | Larmdon=%s | Nyckel=%s\r\n",
-        s.led_red_a ? "ROD" : "av", ledb[s.led_yellow_b], s.led_yellow_fault ? "GUL" : "av",
-        s.led_green_power ? "gron" : "av", s.led_yellow_service ? "GUL" : "av",
-        s.buzzer ? "PA" : "av", snd[s.sounders], s.key_tech ? "TEKNIKER" : "anvandare");
+    out("Utgangar: K1 A=%u K2 B=%u K3 FelOK=%u K4 C=%u | summer=%u | larmdon=%s\n",
+        (s.relays & ALM_K1_A) ? 1u : 0u, (s.relays & ALM_K2_B) ? 1u : 0u,
+        (s.relays & ALM_K3_FAULT_OK) ? 1u : 0u, (s.relays & ALM_K4_C) ? 1u : 0u,
+        s.buzzer, snd[s.sounders]);
 }
 
-/* ---- the panel buttons, from the PC keyboard (PuTTY) ------------------------------------------ */
-static void help(void)
-{
-    out("\r\nTangenter i PuTTY:  t = nyckel TEKNIKER/anvandare   k = Kvittera   a = Aterstall\r\n");
-    out("                    s = Tysta larmdon (pa/av)   v = Servicelage 30 min / slut   ? = status\r\n");
-    out("Bla knappen pa kortet = Kvittera.  Larmdon = OUT1 pa modul L1-M02.\r\n\r\n");
-}
-
-static const char *result_text(alm_result_t r)
-{
-    switch (r) {
-    case ALM_OK:            return "OK";
-    case ALM_ACCESS_DENIED: return "NEKAD - vrid nyckeln till TEKNIKER (t)";
-    case ALM_BAD_DURATION:  return "fel tid";
-    case ALM_UNKNOWN_POINT: return "okand punkt";
-    case ALM_BAD_TIME:      return "fel klocka";
-    default:                return "?";
-    }
-}
-
-static void key(char c)
+/* ---- the modules follow the configuration --------------------------------------------------- */
+static void build_modules(void)
 {
     const uint32_t now = HAL_GetTick();
-    alm_status_t s;
-    switch (c) {
-    case 't':
-    case 'T':
-        alm_set_key(&engine, !engine.key_tech);
-        stamp();
-        out("Nyckel: %s\r\n", engine.key_tech ? "TEKNIKER" : "anvandare");
-        break;
-    case 'k':
-    case 'K':
-        stamp();
-        out("Kvittera: %u kvitterade\r\n", alm_ack(&engine, 1, now));
-        break;
-    case 'a':
-    case 'A': {
-        uint16_t reset = 0, remaining = 0;
-        alm_result_t r = alm_reset(&engine, 1, now, &reset, NULL, 0, &remaining);
-        stamp();
-        if (r == ALM_OK) {
-            out("Aterstall: %u aterstallda, %u kvar (orsaken finns kvar)\r\n", reset, remaining);
-        } else {
-            out("Aterstall: %s\r\n", result_text(r));
+    uint8_t in_used[MAX_MODULES][4];
+    memset(in_used, 0, sizeof(in_used));
+    module_count = 0;
+    /* a module that is no longer in the configuration is no longer a fault */
+    for (uint16_t addr = 1; addr <= ALM_MAX_ADDR; addr++) {
+        if (!((engine.lost[addr >> 3] >> (addr & 7u)) & 1u)) {
+            continue;
         }
-        break;
+        uint8_t used = 0;
+        for (uint16_t i = 0; i < engine.n && !used; i++) {
+            used = engine.cfg[i].module == addr;
+        }
+        if (!used) {
+            alm_set_module_lost(&engine, engine.lost_line[addr], (uint8_t)addr, 0, now);
+        }
     }
-    case 's':
-    case 'S':
-        alm_status(&engine, now, &s);
-        stamp();
-        out("Tysta larmdon: %s\r\n", result_text(alm_silence(&engine, !s.silenced, 1, now)));
-        break;
-    case 'v':
-    case 'V':
-        alm_status(&engine, now, &s);
-        stamp();
-        out("Servicelage: %s\r\n", result_text(alm_service(&engine, s.service_active ? 0u : 30u, 1, now)));
-        break;
-    case '?':
-        help();
-        show_outputs(1);
-        break;
-    default:
-        break;
+    for (uint16_t i = 0; i < engine.n; i++) {
+        const alm_point_cfg_t *c = &engine.cfg[i];
+        if (c->line > WIRED_LINES) {
+            /* no RS485 port for this line on the prototype: say so instead of showing normal */
+            alm_set_module_lost(&engine, c->line, c->module, 1, now);
+            continue;
+        }
+        uint8_t k;
+        for (k = 0; k < module_count; k++) {
+            if (modules[k].addr == c->module) {
+                break;
+            }
+        }
+        if (k == module_count) {
+            if (module_count >= MAX_MODULES) {
+                out("FEL: fler an %u moduler - resten pollas inte\n", MAX_MODULES);
+                alm_set_module_lost(&engine, c->line, c->module, 1, now);
+                continue;
+            }
+            modules[k].addr = c->module;
+            modules[k].line = c->line;
+            module_count++;
+        }
+        if (c->channel >= 1u && c->channel <= 4u) {
+            in_used[k][c->channel - 1u] = 1;
+        }
     }
+    for (uint8_t k = 0; k < module_count; k++) {
+        uint8_t in_mode[4], out_mode[4];
+        for (uint8_t ch = 0; ch < 4u; ch++) {
+            in_mode[ch] = in_used[k][ch] ? MB_INCFG_SUPERVISED : MB_INCFG_NOT_USED;
+            out_mode[ch] = MB_OUTCFG_NOT_USED;
+        }
+        if (modules[k].line == SOUNDER_LINE && modules[k].addr == SOUNDER_ADDR) {
+            out_mode[0] = MB_OUTCFG_SUPERVISED;
+        }
+        uint8_t addr = modules[k].addr, line = modules[k].line;
+        ctrl_module_init(&modules[k], addr, line, in_mode, out_mode);
+    }
+    pi.module_count = module_count;
+    poll_index = 0;
+    modules_for_version = engine.config_version;
+    out("Konfiguration v%lu: %u punkter, %u moduler\n", (unsigned long)engine.config_version,
+        engine.n, module_count);
 }
 
-static void check_terminal(void)
+/* first output rule: the sounders (OUT1 of L1-M02) follow the engine */
+static void drive_module_outputs(void)
 {
-    if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_ORE)) {
-        __HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_OREF);
-    }
-    if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE)) {
-        key((char)(huart2.Instance->RDR & 0xFFu));
+    alm_status_t s;
+    alm_status(&engine, HAL_GetTick(), &s);
+    uint8_t cmd = (s.sounders == SOUNDERS_SOUNDING) ? MB_CMD_ON : MB_CMD_OFF;
+    for (uint8_t k = 0; k < module_count; k++) {
+        if (modules[k].line == SOUNDER_LINE && modules[k].addr == SOUNDER_ADDR) {
+            modules[k].out_cmd = (uint16_t)((modules[k].out_cmd & ~0x000Fu) | cmd);
+        }
     }
 }
 
+/* ---- blue button = Kvittera ------------------------------------------------------------------ */
 static void check_button(void)
 {
     GPIO_PinState now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
@@ -307,63 +346,64 @@ static void check_button(void)
     }
     uint8_t pressed = (now != button_idle);
     if (pressed && !button_pressed) {
-        key('k');
+        out("Bla knappen: Kvittera, %u kvitterade\n", alm_ack(&engine, 1, t));
     }
     button_pressed = pressed;
-}
-
-/* first output rule: the sounders (OUT1 of L1-M02) follow the engine */
-static void drive_module_outputs(void)
-{
-    alm_status_t s;
-    alm_status(&engine, HAL_GetTick(), &s);
-    uint8_t cmd = (s.sounders == SOUNDERS_SOUNDING) ? MB_CMD_ON : MB_CMD_OFF;
-    modules[0].out_cmd = (uint16_t)((modules[0].out_cmd & ~0x000Fu) | cmd);
 }
 
 /* ---- main entry points ------------------------------------------------------------------- */
 void app_init(void)
 {
-    static const uint8_t in_mode[4] = {MB_INCFG_SUPERVISED, MB_INCFG_SUPERVISED,
-                                       MB_INCFG_NOT_USED, MB_INCFG_NOT_USED};
-    static const uint8_t out_mode[4] = {MB_OUTCFG_SUPERVISED, MB_OUTCFG_NOT_USED,
-                                        MB_OUTCFG_NOT_USED, MB_OUTCFG_NOT_USED};
     const uint32_t now = HAL_GetTick();
 
-    out("\r\n=== Sprinkler controller - steg C2: larmlogik ===\r\n");
+    pi_link_init(&pi, &engine, modules, 0, pi_write, &huart2, now);
+    rx_start();
+    out("Sprinkler controller fw %u.%u - steg C3: lank till Raspberry Pi\n", PI_FW_MAJOR, PI_FW_MINOR);
+
     alm_init(&engine, now, 0, on_alarm_event, NULL);
     alm_cfg_error_t err[4];
-    uint16_t nerr = alm_load(&engine, config, POINT_COUNT, 0, now, err, 4);
+    uint16_t nerr = alm_load(&engine, default_config, DEFAULT_COUNT, 0, now, err, 4);
     if (nerr) {
-        out("KONFIGURATIONSFEL: %u fel (punkt %u)\r\n", nerr, err[0].point_id);
+        out("KONFIGURATIONSFEL: %u fel (punkt %u)\n", nerr, err[0].point_id);
     }
     mb_master_init(&line1, rs485_xfer, &huart1, ANSWER_TIMEOUT_MS);
-    ctrl_module_init(&modules[0], 2u, LINE1, in_mode, out_mode);   /* L1-M02 */
+    build_modules();
 
     button_idle = button_last = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
     button_changed_at = now;
-    help();
-    show_outputs(1);
-    next_poll = next_tick = now;
+    show_outputs();
+    next_cycle = next_tick = now;
 }
 
 void app_loop(void)
 {
+    service_pi();
+
+    if (engine.config_version != modules_for_version) {
+        build_modules();        /* the Pi activated a new configuration */
+    }
+
+    /* one module per pass, so the Pi is answered between the (blocking) RS485 transfers */
     uint32_t t = HAL_GetTick();
-    if ((int32_t)(t - next_poll) >= 0) {
-        next_poll = t + POLL_PERIOD_MS;
-        drive_module_outputs();
-        for (uint8_t i = 0; i < MODULE_COUNT; i++) {
-            ctrl_module_poll(&line1, &modules[i], on_module_event, NULL);
+    if (poll_index < module_count) {
+        if (poll_index == 0u) {
+            drive_module_outputs();
         }
+        ctrl_module_poll(&line1, &modules[poll_index], on_module_event, NULL);
+        poll_index++;
+        service_pi();
+    } else if ((int32_t)(t - next_cycle) >= 0) {
+        next_cycle = t + POLL_PERIOD_MS;
+        poll_index = 0;
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
     }
+
     t = HAL_GetTick();
     if ((int32_t)(t - next_tick) >= 0) {
         next_tick = t + TICK_PERIOD_MS;
         alm_tick(&engine, t);
-        show_outputs(0);
+        pi_link_tick(&pi, t);
+        show_outputs();
     }
-    check_terminal();
     check_button();
 }

@@ -196,6 +196,7 @@ T = {
     "err.INVALID": ("ogiltigt val", "invalid choice", "virheellinen valinta", "ugyldig valg", "ugyldigt valg", "μη έγκυρη επιλογή"),
     "err.DELAY_NOT_ALLOWED": ("fördröjningen får vara högst 60 s", "delay may be at most 60 s", "viive saa olla enintään 60 s", "forsinkelsen kan være maks 60 s", "forsinkelsen må højst være 60 s", "η καθυστέρηση μπορεί να είναι έως 60 s"),
     "err.TOO_LONG": ("för lång text (max 20 tecken)", "text too long (max 20 characters)", "liian pitkä teksti (enintään 20 merkkiä)", "for lang tekst (maks 20 tegn)", "for lang tekst (maks 20 tegn)", "πολύ μεγάλο κείμενο (έως 20 χαρακτήρες)"),
+    "err.TOO_MANY": ("för många larmpunkter (max 256)", "too many alarm points (max 256)", "liian monta hälytyspistettä (enintään 256)", "for mange alarmpunkter (maks 256)", "for mange alarmpunkter (maks 256)", "πάρα πολλά σημεία (έως 256)"),
 
     # --- server error codes
     "errc.ACCESS_DENIED": ("Vrid nyckelbrytaren till läge TEKNIKER", "Turn the key switch to TECHNICIAN", "Käännä avainkytkin HUOLTO-asentoon", "Vri nøkkelbryteren til TEKNIKER", "Drej nøglekontakten til TEKNIKER", "Γυρίστε τον κλειδοδιακόπτη στη θέση ΤΕΧΝΙΚΟΣ"),
@@ -235,10 +236,13 @@ T = {
     "ev.type.POINT_DISABLED": ("Punkt frånkopplad", "Point disabled", "Piste poiskytketty", "Punkt frakoblet", "Punkt frakoblet", "Σημείο απενεργοποιήθηκε"),
     "ev.type.POINT_ENABLED": ("Punkt tillkopplad", "Point enabled", "Piste kytketty", "Punkt tilkoblet", "Punkt tilkoblet", "Σημείο ενεργοποιήθηκε"),
     "ev.type.TIME_SET": ("Tid ändrad", "Time changed", "Aika muutettu", "Tid endret", "Tid ændret", "Αλλαγή ώρας"),
+    "ev.type.HMI_LOST": ("Ingen kontakt med panelen (HMI)", "No contact with the panel (HMI)", "Ei yhteyttä paneeliin (HMI)", "Ingen kontakt med panelet (HMI)", "Ingen kontakt med panelet (HMI)", "Χάθηκε η επικοινωνία με την οθόνη (HMI)"),
+    "ev.type.HMI_BACK": ("Kontakt med panelen (HMI) igen", "Contact with the panel (HMI) restored", "Yhteys paneeliin (HMI) palautui", "Kontakt med panelet (HMI) igjen", "Kontakt med panelet (HMI) igen", "Η επικοινωνία με την οθόνη (HMI) αποκαταστάθηκε"),
     "ev.type.LANGUAGE_SET": ("Språk ändrat", "Language changed", "Kieli vaihdettu", "Språk endret", "Sprog ændret", "Αλλαγή γλώσσας"),
 
     # --- simulator
     "sim.hint": ("Här styrs den virtuella centralen. På riktig hårdvara ersätts detta av ingångarna på I/O-modulerna.", "This controls the virtual controller. On real hardware this is replaced by the inputs on the I/O modules.", "Tästä ohjataan virtuaalista keskusta. Oikeassa laitteistossa tämän korvaavat I/O-moduulien tulot.", "Her styres den virtuelle sentralen. På ekte maskinvare erstattes dette av inngangene på I/O-modulene.", "Her styres den virtuelle central. På rigtig hardware erstattes dette af indgangene på I/O-modulerne.", "Εδώ ελέγχεται ο εικονικός controller. Στο πραγματικό hardware τον ρόλο αυτό έχουν οι είσοδοι των I/O modules."),
+    "sim.dev_hint": ("Prototyp: centralen är riktig, men nyckelbrytaren är inte inkopplad ännu – den styrs härifrån.", "Prototype: the controller is real, but the key switch is not wired yet – it is controlled from here.", "Prototyyppi: keskus on oikea, mutta avainkytkintä ei ole vielä kytketty – sitä ohjataan täältä.", "Prototyp: sentralen er ekte, men nøkkelbryteren er ikke koblet til ennå – den styres herfra.", "Prototype: centralen er rigtig, men nøglekontakten er ikke tilsluttet endnu – den styres herfra.", "Πρωτότυπο: ο πίνακας είναι πραγματικός, αλλά ο κλειδοδιακόπτης δεν έχει συνδεθεί ακόμα – ελέγχεται από εδώ."),
     "sim.key": ("Nyckelbrytare i läge TEKNIKER", "Key switch in TECHNICIAN position", "Avainkytkin HUOLTO-asennossa", "Nøkkelbryter i stilling TEKNIKER", "Nøglekontakt i stilling TEKNIKER", "Κλειδοδιακόπτης στη θέση ΤΕΧΝΙΚΟΣ"),
     "sim.inputs": ("Ingångar", "Inputs", "Tulot", "Innganger", "Indgange", "Είσοδοι"),
     "sim.modules": ("Moduler", "Modules", "Moduulit", "Moduler", "Moduler", "Modules"),
@@ -289,6 +293,7 @@ T = {
     "set.reboot_confirm": ("Starta om panelen nu? Skärmen är svart i ungefär en minut.", "Restart the panel now? The screen is dark for about a minute.", "Käynnistetäänkö paneeli nyt uudelleen? Näyttö on pimeänä noin minuutin.", "Starte panelet på nytt nå? Skjermen er svart i omtrent ett minutt.", "Genstart panelet nu? Skærmen er sort i cirka et minut.", "Επανεκκίνηση του πίνακα τώρα; Η οθόνη θα μείνει σβηστή για περίπου ένα λεπτό."),
     "set.rebooting": ("Panelen startar om …", "The panel is restarting …", "Paneeli käynnistyy uudelleen …", "Panelet starter på nytt …", "Panelet genstarter …", "Ο πίνακας κάνει επανεκκίνηση …"),
     "errc.REBOOT_UNAVAILABLE": ("Omstart är inte tillgänglig på den här enheten", "Restart is not available on this device", "Uudelleenkäynnistys ei ole käytettävissä tässä laitteessa", "Omstart er ikke tilgjengelig på denne enheten", "Genstart er ikke tilgængelig på denne enhed", "Η επανεκκίνηση δεν είναι διαθέσιμη σε αυτή τη συσκευή"),
+    "errc.CONTROLLER_UNAVAILABLE": ("Ingen kontakt med centralen", "No contact with the controller", "Ei yhteyttä keskukseen", "Ingen kontakt med sentralen", "Ingen kontakt med centralen", "Καμία επικοινωνία με τον πίνακα"),
     "rail.up": ("Bläddra upp", "Scroll up", "Vieritä ylös", "Bla opp", "Rul op", "Κύλιση πάνω"),
     "rail.down": ("Bläddra ned", "Scroll down", "Vieritä alas", "Bla ned", "Rul ned", "Κύλιση κάτω"),
     "set.service_end": ("Avsluta serviceläge", "End service mode", "Lopeta huoltotila", "Avslutt servicemodus", "Afslut servicetilstand", "Τερματισμός σέρβις"),

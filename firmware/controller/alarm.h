@@ -24,6 +24,7 @@
 #define ALM_MAX_ADDR     247u   /* module addresses 1..247 (line ranges 1-60/61-120/... checked later) */
 #define ALM_MAX_DELAY_S  60u
 #define ALM_LCD_LEN      20u
+#define ALM_HMI_FAULT_MS (120u * 60u * 1000u)   /* HMI lost this long -> system fault (decided) */
 
 typedef enum { CAT_A = 0, CAT_B, CAT_DRIFT, CAT_FAULT, CAT_COUNT } alm_cat_t;
 
@@ -65,7 +66,7 @@ typedef enum {
     EVT_ALARM_ON, EVT_ALARM_CLEARED, EVT_LINE_OPEN, EVT_LINE_SHORT, EVT_LINE_OK,
     EVT_MODULE_LOST, EVT_MODULE_BACK, EVT_ACK, EVT_RESET, EVT_SILENCE, EVT_UNSILENCE,
     EVT_RESOUND, EVT_SERVICE_ON, EVT_SERVICE_OFF, EVT_POINT_DISABLED, EVT_POINT_ENABLED,
-    EVT_TIME_SET, EVT_COUNT
+    EVT_TIME_SET, EVT_HMI_LOST, EVT_HMI_BACK, EVT_COUNT
 } alm_evtype_t;
 
 typedef enum { SRC_SYSTEM = 0, SRC_POINT, SRC_MODULE } alm_srckind_t;
@@ -130,6 +131,7 @@ typedef struct {
     uint32_t config_version, config_crc;
     uint32_t last_seq;
     uint16_t lost_modules;
+    uint8_t hmi_lost;              /* no contact with the Raspberry Pi */
 } alm_status_t;
 
 typedef struct {
@@ -145,6 +147,8 @@ typedef struct {
 
     uint8_t fault_unacked, key_tech, silenced, service_active;
     uint32_t service_until_ms;
+    uint8_t hmi_lost;
+    uint32_t hmi_lost_since_ms;
 
     uint32_t now_ms, started_ms;
     int64_t time_offset;                    /* Unix time = time_offset + now_ms / 1000 */
@@ -163,13 +167,21 @@ void alm_init(alm_t *a, uint32_t now_ms, uint32_t start_seq, alm_event_fn on_eve
 uint16_t alm_load(alm_t *a, const alm_point_cfg_t *pts, uint16_t n, uint8_t user, uint32_t now_ms,
                   alm_cfg_error_t *errors, uint16_t max_errors);
 
-/* CRC-32 of a configuration in its canonical binary form (points in id order). */
+/* Only check a configuration (same checks as alm_load). Returns the number of errors. */
+uint16_t alm_validate(const alm_point_cfg_t *pts, uint16_t n, alm_cfg_error_t *errors, uint16_t max_errors);
+
+/* CRC-32 of a configuration in its canonical binary form (points in id order).
+   Record = 52 bytes, little endian: id(2) line module channel category device_type contact_nc
+   delay_s enabled section(2) lcd1[20] lcd2[20] (text padded with 0). The Pi computes the same. */
 uint32_t alm_config_crc(const alm_point_cfg_t *pts, uint16_t n);
 
 /* From the module protocol: input value (MB_IN_*) of module `addr` input `channel` (1..4). */
 void alm_set_input(alm_t *a, uint8_t line, uint8_t addr, uint8_t channel, uint8_t mb_in, uint32_t now_ms);
 void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_t now_ms);
 void alm_set_key(alm_t *a, int tech);
+/* Contact with the Raspberry Pi lost / back (decided: event at once, system fault after 120 min,
+   not in service mode). */
+void alm_set_hmi_lost(alm_t *a, int lost, uint32_t now_ms);
 void alm_tick(alm_t *a, uint32_t now_ms);
 
 /* commands from the panel (Pi or local buttons) */
@@ -180,6 +192,9 @@ alm_result_t alm_silence(alm_t *a, int silence, uint8_t user, uint32_t now_ms);
 alm_result_t alm_service(alm_t *a, uint16_t minutes, uint8_t user, uint32_t now_ms);
 alm_result_t alm_disable(alm_t *a, uint16_t point_id, int disabled, uint8_t user, uint32_t now_ms);
 alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t now_ms);
+/* Set the clock without the key, only while it has never been set (no RTC yet: after power-up
+   the Pi gives the time). Returns ALM_ACCESS_DENIED if the clock is already valid. */
+alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms);
 
 void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s);
 uint32_t alm_time(const alm_t *a, uint32_t now_ms);
@@ -188,6 +203,8 @@ uint32_t alm_time(const alm_t *a, uint32_t now_ms);
 int alm_find(const alm_t *a, uint16_t point_id);              /* index or -1 */
 uint8_t alm_display_category(const alm_t *a, int index);      /* 'A', 'B', 'C', 'D' (drift), 'F' */
 int alm_is_enabled(const alm_t *a, int index);
+uint8_t alm_condition(const alm_t *a, int index);             /* 0 NORMAL 1 ACTIVE 2 OPEN 3 SHORT */
+int16_t alm_pending_left_s(const alm_t *a, int index, uint32_t now_ms);   /* -1 when not pending */
 
 /* events with seq > from_seq, oldest first; returns how many were copied */
 uint16_t alm_events(const alm_t *a, uint32_t from_seq, alm_event_t *out, uint16_t max);

@@ -360,6 +360,46 @@ static void test_reload_keeps_state_of_unchanged_points(void)
     CHECK(ctl.config_version == 2);
 }
 
+static void test_hmi_lost_gives_fault_after_120_minutes(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_B, DT_SERVICEVENTIL, 0, 0)};
+    load(p, 1);
+    alm_set_hmi_lost(&ctl, 1, now);
+    CHECK(last_event_is(EVT_HMI_LOST));
+    CHECK(status().hmi_lost && (status().relays & ALM_K3_FAULT_OK));   /* not a fault yet */
+    now += 119u * 60000u;
+    CHECK(status().relays & ALM_K3_FAULT_OK);
+    now += 61000u;
+    CHECK(!(status().relays & ALM_K3_FAULT_OK) && status().fault == 1);
+    alm_set_key(&ctl, 1);
+    alm_service(&ctl, 30, 0, now);                 /* not in service mode */
+    CHECK(status().relays_logical & ALM_K3_FAULT_OK);
+    alm_service(&ctl, 0, 0, now);
+    alm_set_hmi_lost(&ctl, 0, now);
+    CHECK(last_event_is(EVT_HMI_BACK) && (status().relays & ALM_K3_FAULT_OK));
+}
+
+static void test_sync_time_only_once_without_key(void)
+{
+    fresh();
+    CHECK(alm_sync_time(&ctl, 1800000000u, now) == ALM_OK);
+    CHECK(status().time == 1800000000u);
+    CHECK(alm_sync_time(&ctl, 1900000000u, now) == ALM_ACCESS_DENIED);   /* already valid */
+    CHECK(status().time == 1800000000u);
+}
+
+static void test_pending_left_and_condition(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_A, DT_PRESSOSTAT, 30, 0)};
+    load(p, 1);
+    CHECK(alm_pending_left_s(&ctl, 0, now) == -1 && alm_condition(&ctl, 0) == 0);
+    set(1, ACTIVE);
+    now += 10000u;
+    CHECK(alm_pending_left_s(&ctl, 0, now) == 20 && alm_condition(&ctl, 0) == 1);
+}
+
 int main(void)
 {
     test_saved_only_when_crc_matches();
@@ -380,6 +420,9 @@ int main(void)
     test_service_mode_blocks_all_transmission_and_releases_at_end();
     test_no_and_nc_contacts();
     test_reload_keeps_state_of_unchanged_points();
-    printf("%s: %d checks, %d failures (18 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
+    test_hmi_lost_gives_fault_after_120_minutes();
+    test_sync_time_only_once_without_key();
+    test_pending_left_and_condition();
+    printf("%s: %d checks, %d failures (21 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
     return failures ? 1 : 0;
 }

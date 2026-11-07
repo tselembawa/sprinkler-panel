@@ -1,7 +1,8 @@
 /*
  * Tiny stand-in for the STM32 HAL, so that controller/app.c can run on the PC in the
  * end-to-end tests: USART1 = a pseudo terminal to the module simulator,
- * USART2 = stdin/stdout. Only what app.c uses.
+ * USART2 = stdin/stdout (the Pi link; bytes delivered like the RX interrupt would).
+ * Only what app.c uses.
  */
 #ifndef HOST_MAIN_H
 #define HOST_MAIN_H
@@ -12,7 +13,8 @@ typedef enum { HAL_OK = 0, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT } HAL_StatusTypeDef;
 typedef enum { GPIO_PIN_RESET = 0, GPIO_PIN_SET } GPIO_PinState;
 
 typedef struct { volatile uint32_t RDR; } USART_TypeDef;
-typedef struct { USART_TypeDef *Instance; int fd_in, fd_out; } UART_HandleTypeDef;
+typedef enum { HAL_UART_STATE_RESET = 0, HAL_UART_STATE_READY = 0x20, HAL_UART_STATE_BUSY_RX = 0x22 } HAL_UART_StateTypeDef;
+typedef struct { USART_TypeDef *Instance; int fd_in, fd_out; HAL_UART_StateTypeDef RxState; uint8_t *rx_ptr; } UART_HandleTypeDef;
 typedef struct { int dummy; } GPIO_TypeDef;
 
 extern GPIO_TypeDef host_gpioa, host_gpioc;
@@ -28,6 +30,9 @@ HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle(UART_HandleTypeDef *h, uint8_t *p, ui
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin);
 void HAL_GPIO_TogglePin(GPIO_TypeDef *port, uint16_t pin);
 int host_uart_flag(UART_HandleTypeDef *h, uint32_t flag);
+HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *h, uint8_t *p, uint16_t size);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h);
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *h);
 
 #define UART_FLAG_RXNE 1u
 #define UART_FLAG_ORE  2u
