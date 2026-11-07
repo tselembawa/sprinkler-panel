@@ -80,7 +80,8 @@ def test_start_configure_and_report_inputs(rig):
     assert rig.poll() == ["EV 2 ONLINE 0 0 0"]
     assert not m.flags & ms.ST_RESTARTED                      # CONFIG_DONE received
     assert [c & 0xFF for c in m.cfg[4:8]] == [1, 1, 0, 0]     # IN3/IN4 not used
-    assert m.cfg[0] == 10 and m.cfg[1] == 0x2222
+    assert m.cfg[0] == 10 and m.cfg[1] == 0x2222                # failsafe HOLD
+    assert m.cfg[12] == 140                                    # low supply 14.0 V
     ev = rig.poll()
     # first data: all four inputs reported, old value 65535 = unknown
     assert ev == ["EV 2 INPUT 0 65535 0", "EV 2 INPUT 1 65535 1",
@@ -157,3 +158,12 @@ def test_identify(rig):
     assert m.status() & ms.ST_IDENTIFY
     rig.cmd("ident 0 0")
     assert not m.status() & ms.ST_IDENTIFY
+
+
+def test_low_supply_threshold_14v(rig):
+    rig.poll(), rig.poll()
+    m = rig.modules[0]
+    m.supply_mv = 15000                                        # above 14 V: no fault
+    assert rig.poll() == []
+    m.supply_mv = 13500                                        # below 14 V
+    assert rig.poll() == ["EV 2 STATUS 0 0 4"]

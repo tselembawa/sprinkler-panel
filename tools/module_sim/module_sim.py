@@ -15,7 +15,7 @@
     n        επόμενο module (όταν υπάρχουν πολλά)
     r        επανεκκίνηση module (σαν να κόπηκε το ρεύμα του)
     s        σιωπή: το module σταματά να απαντά (δοκιμή «modul saknas») / ξανά
-    v        χαμηλή τάση 24 V (18,5 V) / κανονική
+    v        χαμηλή τάση 24 V (13,0 V, κάτω από το όριο 14 V) / κανονική
     q        έξοδος
 """
 
@@ -46,13 +46,13 @@ CMD_OFF, CMD_ON, CMD_FLASH, CMD_FLASH_FAST, CMD_PULSE = range(5)
 CMD_NAMES = ["OFF", "ON", "FLASH", "FLASH_FAST", "PULSE"]
 
 HR_OUT_CMD, HR_COMMAND, HR_SYNC = 0x0100, 0x0101, 0x0102
-HR_CFG_START, HR_CFG_COUNT = 0x0110, 12
+HR_CFG_START, HR_CFG_COUNT = 0x0110, 13
 COMMAND_NAMES = {1: "CONFIG_DONE", 2: "CLEAR_FLAGS", 3: "IDENTIFY_ON", 4: "IDENTIFY_OFF", 5: "REBOOT"}
 
 EX_FUNCTION, EX_ADDRESS, EX_VALUE = 1, 2, 3
 
-DEFAULT_CFG = [10, 0x2222, 100, 10, 0x0001, 0x0001, 0x0001, 0x0001, 0x3202, 0x3202, 0x3202, 0x3202]
-SUPPLY_LOW_MV, SUPPLY_HIGH_MV = 20000, 30000
+DEFAULT_CFG = [10, 0x2222, 100, 10, 0x0001, 0x0001, 0x0001, 0x0001, 0x3202, 0x3202, 0x3202, 0x3202, 140]
+SUPPLY_HIGH_MV = 30000
 
 
 def crc16(data: bytes) -> int:
@@ -153,9 +153,12 @@ class Module:
             word |= (on | sup) << (4 * n)
         return word
 
+    def supply_low_mv(self):
+        return self.cfg[12] * 100
+
     def status(self):
         st = self.flags
-        if self.supply_mv < SUPPLY_LOW_MV:
+        if self.supply_mv < self.supply_low_mv():
             st |= ST_SUPPLY_LOW
         if self.supply_mv > SUPPLY_HIGH_MV:
             st |= ST_SUPPLY_HIGH
@@ -234,6 +237,8 @@ class Module:
             ok = (value & 0xFF) <= 2 and (value >> 8) == 0
         elif 0x0118 <= reg <= 0x011B:
             ok = (value & 0xFF) <= 2
+        elif reg == 0x011C:
+            ok = 100 <= value <= 300
         else:
             raise ModbusException(EX_ADDRESS)
         if not ok:
@@ -309,7 +314,8 @@ class Module:
                     self.write_register(start + i, v)
                 if start <= HR_CFG_START < start + count:
                     self.log(f"[M{self.address:02d}] πήρε ρύθμιση: timeout {self.cfg[0]} s, "
-                             f"είσοδοι {[c & 0xFF for c in self.cfg[4:8]]}")
+                             f"είσοδοι {[c & 0xFF for c in self.cfg[4:8]]}, "
+                             f"χαμηλή τάση {self.cfg[12] / 10:.1f} V")
                 return None if broadcast else with_crc(bytes([self.address]) + frame[1:6])
             raise ModbusException(EX_FUNCTION)
         except ModbusException as e:
@@ -343,7 +349,7 @@ class Module:
             extra.append("περιμένει ρύθμιση")
         if self.silent:
             extra.append("ΣΙΩΠΗ")
-        if self.supply_mv < SUPPLY_LOW_MV:
+        if self.supply_mv < self.supply_low_mv():
             extra.append(f"τάση {self.supply_mv / 1000:.1f} V")
         if self.failsafe_active:
             extra.append("FAILSAFE")
@@ -535,7 +541,7 @@ def run(port, addresses, baud=38400, keys=True, modules=None, stop=None):
                 elif k == "s":
                     m.silent = not m.silent
                 elif k == "v":
-                    m.supply_mv = 18500 if m.supply_mv >= SUPPLY_LOW_MV else 24000
+                    m.supply_mv = 13000 if m.supply_mv >= m.supply_low_mv() else 24000
                 elif k == "q":
                     break
                 print(modules[sel].describe())

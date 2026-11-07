@@ -59,8 +59,8 @@
 /* STATUS bits */
 #define MB_ST_RESTARTED           (1u << 0)
 #define MB_ST_FAILSAFE            (1u << 1)
-#define MB_ST_SUPPLY_LOW          (1u << 2)
-#define MB_ST_SUPPLY_HIGH         (1u << 3)
+#define MB_ST_SUPPLY_LOW          (1u << 2)   /* below MB_HR_SUPPLY_LOW_100MV */
+#define MB_ST_SUPPLY_HIGH         (1u << 3)   /* above 30.0 V */
 #define MB_ST_INTERNAL_FAULT      (1u << 4)
 #define MB_ST_DIP_CHANGED         (1u << 5)
 #define MB_ST_IDENTIFY            (1u << 6)
@@ -108,11 +108,12 @@
 #define MB_HR_PULSE_100MS         0x0113u   /* default 10 = 1 s */
 #define MB_HR_IN_CFG(n)           (0x0114u + (n))   /* low byte mode, high byte EOL profile */
 #define MB_HR_OUT_CFG(n)          (0x0118u + (n))   /* low byte mode, high byte current limit /10 mA */
-#define MB_HR_CFG_COUNT           12u
+#define MB_HR_SUPPLY_LOW_100MV    0x011Cu   /* SUPPLY_LOW below this, in 0.1 V: 100..300, default 140 = 14.0 V */
+#define MB_HR_CFG_COUNT           13u
 
 #define MB_FAILSAFE_OFF           0u
 #define MB_FAILSAFE_ON            1u
-#define MB_FAILSAFE_HOLD          2u
+#define MB_FAILSAFE_HOLD          2u   /* decided default: outputs keep their state */
 #define MB_FAILSAFE_FLASH         3u
 
 #define MB_INCFG_NOT_USED         0u

@@ -50,7 +50,7 @@ struct ctrl_module {
     /* set by ctrl_module_init */
     uint8_t addr;
     uint8_t line;                 /* RS485 line this module is polled on (1..4) */
-    uint16_t cfg[12];             /* configuration block 0x0110.. (MB_HR_CFG_COUNT) */
+    uint16_t cfg[13];             /* configuration block 0x0110.. (MB_HR_CFG_COUNT) */
     uint16_t out_cmd;             /* wanted outputs (MB_CMD_* per nibble), set by the application */
 
     /* state, read only for the application */
@@ -73,7 +73,8 @@ struct ctrl_module {
 };
 
 /* in_mode / out_mode: MB_INCFG_* / MB_OUTCFG_* per channel; other settings get the defaults
-   of the register map (timeout 10 s, failsafe HOLD, debounce 100 ms, pulse 1 s, 500 mA). */
+   of the register map (timeout 10 s, failsafe HOLD, debounce 100 ms, pulse 1 s, 500 mA,
+   low supply 14.0 V). */
 void ctrl_module_init(ctrl_module_t *m, uint8_t addr, uint8_t line,
                       const uint8_t in_mode[4], const uint8_t out_mode[4]);
 

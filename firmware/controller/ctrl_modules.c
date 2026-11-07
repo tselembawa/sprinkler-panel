@@ -30,6 +30,7 @@ void ctrl_module_init(ctrl_module_t *m, uint8_t addr, uint8_t line,
         m->cfg[4u + n] = in_mode[n];                    /* EOL profile 0 */
         m->cfg[8u + n] = (uint16_t)(out_mode[n] | (50u << 8));   /* 500 mA */
     }
+    m->cfg[12] = 140u;                                  /* SUPPLY_LOW at 14.0 V */
     m->state = MOD_START;
     m->last_error = MB_OK;
 }
