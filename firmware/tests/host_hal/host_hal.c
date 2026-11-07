@@ -69,6 +69,19 @@ int host_uart_flag(UART_HandleTypeDef *h, uint32_t flag)
     return 0;
 }
 
+/* no LCD on the PC: nobody answers on I2C */
+I2C_HandleTypeDef hi2c1;
+HAL_StatusTypeDef HAL_I2C_Master_Transmit(I2C_HandleTypeDef *h, uint16_t addr, uint8_t *p, uint16_t n, uint32_t timeout)
+{
+    (void)h; (void)addr; (void)p; (void)n; (void)timeout;
+    return HAL_ERROR;
+}
+
+void HAL_Delay(uint32_t ms)
+{
+    usleep(ms * 1000u);
+}
+
 HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *h, uint8_t *p, uint16_t size)
 {
     (void)size;

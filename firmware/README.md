@@ -10,7 +10,9 @@ controller/   Main Controller (NUCLEO-G0B1RE)
   alarm.c/.h         Η λογική των συναγερμών (μεταφορά του εικονικού controller του HMI σε C)
   ctrl_modules.c/.h  Ζωή κάθε module: εκκίνηση, ρύθμιση, κυκλική ερώτηση, MODULE_LOST, γεγονότα
   pi_link.c/.h       Η πλευρά του controller στη σύνδεση με το Pi: απαντά σε κάθε αίτημα
-  app.c/.h           Βήμα C3: modules → συναγερμοί → relays/LED/σειρήνες, σύνδεση με το Raspberry Pi
+  lcd.c/.h           Οθόνη 20×4 (HD44780 + PCF8574 I2C): στέλνει μόνο ό,τι άλλαξε, ÅÄÖ με δικούς μας χαρακτήρες
+  lcd_view.c/.h      Τι δείχνει η οθόνη: ηρεμία (ώρα Σουηδίας) ή συναγερμοί/σφάλματα ένα-ένα
+  app.c/.h           Modules → συναγερμοί → relays/LED/σειρήνες, σύνδεση με το Raspberry Pi, LCD
 tests/        Δοκιμές στο PC (gcc)
   test_alarm.c       Τα tests του εικονικού controller + τα νέα, για τη C έκδοση
   host_hal/          Μικρό «ψεύτικο» HAL: τρέχει όλο το app.c στο PC
@@ -56,6 +58,14 @@ tests/        Δοκιμές στο PC (gcc)
 Το Nucleo στο USB του Pi (`/dev/ttyACM0`):
 `SPRINKLER_CONTROLLER=serial bash hmi/scripts/install-pi.sh` και reboot.
 
+## LCD (βήμα L1)
+
+CubeMX: pin **PB8 → I2C1_SCL**, **PB9 → I2C1_SDA**, Connectivity → I2C1 → **I2C**, Standard Mode 100 kHz.
+Αρχεία: `lcd.c`, `lcd_view.c` στο `Core/Src`, `lcd.h`, `lcd_view.h` στο `Core/Inc`.
+Καλώδια: GND–GND, VCC–5V, SDA–D14 (PB9), SCL–D15 (PB8). Τα PB8/PB9 είναι FT_f (αντέχουν 5 V).
+Στην εκκίνηση δείχνει 6 s δοκιμαστική οθόνη: η γραμμή 2 (A00) ή η 3 (A02) δείχνει σωστά ÅÄÖ åäö
+→ `LCD_ROM` στο `app.c`.
+
 ## Δοκιμές στο PC
 
 ```bash
@@ -63,10 +73,11 @@ cd firmware
 CF="-std=c11 -Wall -Wextra -Werror -Icommon -Icontroller"
 gcc $CF -o /tmp/test_modbus_rtu tests/test_modbus_rtu.c common/modbus_rtu.c && /tmp/test_modbus_rtu
 gcc $CF -o /tmp/test_alarm tests/test_alarm.c controller/alarm.c && /tmp/test_alarm
+gcc $CF -o /tmp/test_lcd tests/test_lcd.c controller/lcd.c controller/lcd_view.c controller/alarm.c && /tmp/test_lcd
 gcc $CF -o /tmp/host_ctrl tests/host_ctrl.c common/modbus_rtu.c controller/ctrl_modules.c
 gcc -std=gnu11 -Wall -Wextra -Werror -Itests/host_hal -Icommon -Icontroller -o /tmp/host_app \
     tests/host_hal/host_hal.c controller/app.c controller/alarm.c controller/ctrl_modules.c \
-    controller/pi_link.c common/modbus_rtu.c common/cobs.c
+    controller/pi_link.c controller/lcd.c controller/lcd_view.c common/modbus_rtu.c common/cobs.c
 cd .. && HOST_CTRL=/tmp/host_ctrl HOST_APP=/tmp/host_app python -m pytest tools/module_sim   # θέλει pyserial
 ```
 

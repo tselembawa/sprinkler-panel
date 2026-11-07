@@ -14,6 +14,7 @@
  *                                           "USART2/LPUART2 global interrupt" enabled)
  *   PA5     green LED LD4                -> blinks on every poll cycle
  *   PC13    blue button B1               -> Kvittera (like the button on the panel)
+ *   I2C1    PB8 (D15, SCL) / PB9 (D14, SDA) -> 20x4 LCD with PCF8574 backpack, 100 kHz
  */
 #include "app.h"
 #include "main.h"
@@ -24,12 +25,15 @@
 
 #include "alarm.h"
 #include "ctrl_modules.h"
+#include "lcd.h"
+#include "lcd_view.h"
 #include "modbus_map.h"
 #include "modbus_rtu.h"
 #include "pi_link.h"
 
 extern UART_HandleTypeDef huart1;   /* RS485 line 1 */
 extern UART_HandleTypeDef huart2;   /* Raspberry Pi (ST-LINK virtual COM port) */
+extern I2C_HandleTypeDef hi2c1;     /* LCD */
 
 #define POLL_PERIOD_MS     500u     /* one cycle over all modules of the line */
 #define TICK_PERIOD_MS     100u     /* alarm engine timers (delays, service mode) */
@@ -40,6 +44,11 @@ extern UART_HandleTypeDef huart2;   /* Raspberry Pi (ST-LINK virtual COM port) *
 #define SOUNDER_LINE       1u       /* first output rule: the sounders are OUT1 of L1-M02 */
 #define SOUNDER_ADDR       2u
 #define WIRED_LINES        1u       /* only line 1 has an RS485 port on the prototype */
+#define LCD_ROM            LCD_ROM_A00   /* which character set the display has (see the test screen) */
+#define LCD_TEST_MS        6000u    /* test screen after start-up */
+#define LCD_RETRY_MS       5000u    /* no display: look for it again */
+#define LCD_RENDER_MS      250u
+#define LCD_CHARS_PER_PASS 6u       /* a few characters per loop pass, ~0.5 ms each */
 
 /* ---- configuration until the Raspberry Pi sends its own --------------------------------- */
 static const alm_point_cfg_t default_config[] = {
@@ -55,6 +64,9 @@ static ctrl_module_t modules[MAX_MODULES];
 static uint8_t module_count;
 static uint32_t modules_for_version = 0xFFFFFFFFu;
 static pi_link_t pi;
+static lcd_t lcd;
+static lcd_view_t lcd_screen;
+static uint32_t lcd_test_until, lcd_next_render, lcd_next_retry;
 
 static uint32_t next_cycle, next_tick, last_frame_end;
 static uint8_t poll_index;
@@ -351,6 +363,58 @@ static void check_button(void)
     button_pressed = pressed;
 }
 
+/* ---- LCD ------------------------------------------------------------------------------------- */
+static int lcd_i2c_write(void *ctx, uint8_t addr7, const uint8_t *data, uint16_t len)
+{
+    return HAL_I2C_Master_Transmit((I2C_HandleTypeDef *)ctx, (uint16_t)(addr7 << 1), (uint8_t *)data, len, 10u)
+                   == HAL_OK ? 0 : -1;
+}
+
+static void lcd_start(uint32_t now)
+{
+    if (lcd_init(&lcd, lcd_i2c_write, &hi2c1, HAL_Delay, LCD_ROM) != 0) {
+        lcd_next_retry = now + LCD_RETRY_MS;
+        return;
+    }
+    out("LCD hittad pa adress 0x%02X\n", lcd.addr7);
+    /* test screen: which character set? Row 2 uses our own letters, row 3 the ROM A02 codes */
+    char row0[24];
+    snprintf(row0, sizeof(row0), "LCD OK  ADR 0x%02X", lcd.addr7);
+    lcd_set_row(&lcd, 0, row0);
+    lcd.rom = LCD_ROM_A00;
+    lcd_set_row(&lcd, 1, "A00: \xC5\xC4\xD6 \xE5\xE4\xF6");
+    lcd.rom = LCD_ROM_A02;
+    lcd_set_row(&lcd, 2, "A02: \xC5\xC4\xD6 \xE5\xE4\xF6");
+    lcd.rom = LCD_ROM;
+    lcd_set_row(&lcd, 3, "RAD 2 ELLER 3 RATT?");
+    lcd_test_until = now + LCD_TEST_MS;
+    lcd_next_render = lcd_test_until;
+}
+
+static void lcd_service(void)
+{
+    uint32_t t = HAL_GetTick();
+    if (!lcd.ok) {
+        if ((int32_t)(t - lcd_next_retry) >= 0) {
+            lcd_start(t);
+        }
+        return;
+    }
+    if ((int32_t)(t - lcd_next_render) >= 0) {
+        lcd_next_render = t + LCD_RENDER_MS;
+        char rows[LCD_ROWS][LCD_COLS + 1];
+        lcd_view_render(&lcd_screen, &engine, t, rows);
+        for (uint8_t r = 0; r < LCD_ROWS; r++) {
+            lcd_set_row(&lcd, r, rows[r]);
+        }
+    }
+    lcd_flush(&lcd, LCD_CHARS_PER_PASS);
+    if (!lcd.ok) {
+        out("LCD svarar inte\n");
+        lcd_next_retry = t + LCD_RETRY_MS;
+    }
+}
+
 /* ---- main entry points ------------------------------------------------------------------- */
 void app_init(void)
 {
@@ -368,6 +432,9 @@ void app_init(void)
     }
     mb_master_init(&line1, rs485_xfer, &huart1, ANSWER_TIMEOUT_MS);
     build_modules();
+
+    lcd_view_init(&lcd_screen);
+    lcd_start(HAL_GetTick());
 
     button_idle = button_last = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
     button_changed_at = now;
@@ -405,5 +472,6 @@ void app_loop(void)
         pi_link_tick(&pi, t);
         show_outputs();
     }
+    lcd_service();
     check_button();
 }

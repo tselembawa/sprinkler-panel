@@ -30,6 +30,9 @@ HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle(UART_HandleTypeDef *h, uint8_t *p, ui
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin);
 void HAL_GPIO_TogglePin(GPIO_TypeDef *port, uint16_t pin);
 int host_uart_flag(UART_HandleTypeDef *h, uint32_t flag);
+typedef struct { int unused; } I2C_HandleTypeDef;
+HAL_StatusTypeDef HAL_I2C_Master_Transmit(I2C_HandleTypeDef *h, uint16_t addr, uint8_t *p, uint16_t n, uint32_t timeout);
+void HAL_Delay(uint32_t ms);
 HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *h, uint8_t *p, uint16_t size);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h);
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *h);
