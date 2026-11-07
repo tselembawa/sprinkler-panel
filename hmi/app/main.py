@@ -120,13 +120,25 @@ CONFIG_LOCK = threading.Lock()
 _rejected_crc: int | None = None
 
 
+_language_refused: str | None = None
+
+
 def push_language_if_needed():
     """The panel LCD speaks the language chosen here (the controller forgets it at restart)."""
     if not hasattr(controller, "set_language"):
         return
+    global _language_refused
     lang = language()
-    if controller.get_status().get("language") != lang:
+    if controller.get_status().get("language") == lang or _language_refused == lang:
+        return
+    try:
         controller.set_language(lang)
+        _language_refused = None
+    except CommandError as e:
+        # older controller firmware without this language: the LCD keeps its language,
+        # everything else goes on (do not ask again every half second)
+        _language_refused = lang
+        print(f"controller: language {lang} refused ({e.code})", flush=True)
 
 
 def push_config_if_needed():
