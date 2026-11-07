@@ -529,3 +529,7 @@ body.fire .rail-btn { color: #ff9a9a; border-color: rgba(255, 90, 90, .45); }
   .grid-settings h2 { margin-bottom: 4px; }
 }
 .btn-ic { display: inline-flex; align-items: center; gap: 6px; }
+
+/* long words (e.g. Russian) wrap in the points table instead of pushing the buttons out */
+#view-points .table td { white-space: normal; }
+#view-points .table td:first-child, #view-points .table td:nth-child(2), #view-points .table td:last-child { white-space: nowrap; }

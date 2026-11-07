@@ -101,7 +101,7 @@ static void test_finds_address_and_writes_rows(void)
 {
     lcd_t l;
     hd_reset(0x3F);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
     CHECK(l.addr7 == 0x3F && l.ok && m.display_on && !m.mode8);
     lcd_set_row(&l, 0, "HELLO");
     lcd_set_row(&l, 2, "THIRD ROW");
@@ -125,7 +125,7 @@ static void test_no_display(void)
 {
     lcd_t l;
     hd_reset(0x50);                        /* nothing at 0x27 / 0x3F */
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == -1);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == -1);
     CHECK(!l.ok && l.addr7 == 0);
     lcd_set_row(&l, 0, "X");
     CHECK(lcd_flush(&l, 10) > 0);           /* nothing sent, still to do */
@@ -135,7 +135,7 @@ static void test_swedish_letters(void)
 {
     lcd_t l;
     hd_reset(0x27);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
     lcd_set_row(&l, 0, "\xC5\xC4\xD6 \xE5\xE4\xF6");     /* ÅÄÖ åäö in Latin-1 */
     while (lcd_flush(&l, 50)) { }
     const uint8_t want[] = {0x08, 0x09, 0x0A, ' ', 0x0B, 0xE1, 0xEF};
@@ -143,22 +143,26 @@ static void test_swedish_letters(void)
     /* the dot pictures were loaded: row 1 of Å is the ring (01010), of Ä the dots (01010) */
     CHECK(m.cgram[0 * 8 + 0] == 0x04 && m.cgram[0 * 8 + 1] == 0x0A);
     CHECK(m.cgram[2 * 8 + 6] == 0x0E);
-    /* ROM A02: Latin-1 codes as they are */
-    CHECK(lcd_map(0xC5, LCD_ROM_A02, 0) == 0xC5 && lcd_map(0xF6, LCD_ROM_A02, 0) == 0xF6);
-    CHECK(lcd_map('A', LCD_ROM_A00, 0) == 'A' && lcd_map(0x01, LCD_ROM_A00, 0) == '?');
+    /* ROM A02: Latin-1 codes as they are, no places used */
+    hd_reset(0x27);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A02) == 0);
+    lcd_set_row(&l, 0, "\xC5\xC4\xD6 \xE5\xE4\xF6\x01");
+    while (lcd_flush(&l, 50)) { }
+    const uint8_t want2[] = {0xC5, 0xC4, 0xD6, ' ', 0xE5, 0xE4, 0xF6, '?'};
+    CHECK(memcmp(m.ddram, want2, sizeof(want2)) == 0);
 }
 
 static void test_display_unplugged_then_back(void)
 {
     lcd_t l;
     hd_reset(0x27);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
     m.present_addr = 0;                    /* cable out */
     lcd_set_row(&l, 0, "ABC");
     lcd_flush(&l, 10);
     CHECK(!l.ok && l.errors > 0);
     hd_reset(0x27);                        /* back (powered up again) */
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
     lcd_set_row(&l, 0, "ABC");
     while (lcd_flush(&l, 10)) { }
     char r[21];
@@ -289,6 +293,20 @@ static void test_screens(void)
     CHECK_STR(r[3], "L1-M02-IN3");
 }
 
+/* how many letters of our own a screen needs (must fit in the 8 places) */
+static int own_letters(char r[4][21])
+{
+    int seen[256] = {0}, n = 0;
+    static const uint8_t nordic[] = {0xC5, 0xC4, 0xD6, 0xE5, 0xC6, 0xD8, 0xE6, 0xF8};
+    for (int k = 0; k < 4; k++) {
+        for (const uint8_t *p = (const uint8_t *)r[k]; *p; p++) {
+            int own = (*p >= 0x80 && *p < LCD_EXTRA_END) || memchr(nordic, *p, sizeof(nordic)) != NULL;
+            if (own && !seen[*p]) { seen[*p] = 1; n++; }
+        }
+    }
+    return n;
+}
+
 static void test_languages_and_greek(void)
 {
     /* the fixed texts follow the language, the point texts stay */
@@ -319,23 +337,51 @@ static void test_languages_and_greek(void)
                           'K', LCD_GR_LAMDA, 'E', 'I', LCD_GR_DELTA, 'I', 0};          /* ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ */
     CHECK_STR(r[3], want3);
 
-    /* on the display: Greek set loaded, Greek codes become CGRAM slots */
+    /* Russian */
+    lang = LANG_RU; lcd_view_init(&v);
+    alm_init(&eng, now, 0, NULL, NULL);
+    CHECK(alm_load(&eng, pts, 1, 0, now, NULL, 0) == 0);
+    alm_set_input(&eng, 1, 2, 2, 0, now);
+    rows_of(&v, r);
+    const char ru0[] = {LCD_GR_PI, 'O', LCD_CY_ZHE, 'A', 'P', 0};                  /* ПОЖАР */
+    CHECK_STR(r[0], ru0);
+    const char ru3[] = {'H', 'E', ' ', 'K', 'B', LCD_CY_I, 'T', LCD_CY_I, 'P', 'O', 'B', 'A', 'H', 'O', 0};
+    CHECK_STR(r[3], ru3);                                                            /* НЕ КВИТИРОВАНО */
+
+    /* on the display: Greek, Swedish and Cyrillic letters share the 8 places */
     lcd_t l;
     hd_reset(0x27);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
-    lcd_set_row(&l, 0, "\xC5");
-    while (lcd_flush(&l, 50)) { }
-    CHECK(m.ddram[0] == 0x08);                 /* Å = slot 0 of the Nordic set */
-    CHECK(lcd_set_charset(&l, LCD_SET_GREEK) == 0);
-    CHECK(m.cgram[0] == 0x1F && m.cgram[1] == 0x10);   /* slot 0 is now Γ */
-    lcd_set_row(&l, 0, want0);
-    lcd_set_row(&l, 1, "\xC5\xC4\xD6");               /* Swedish capitals in Greek mode */
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
+    lcd_set_row(&l, 0, want0);                              /* ΠΥΡΚΑΓΙΑ: Π place 0, Γ place 1 */
+    lcd_set_row(&l, 1, "\xC5\xC4\xD6");                    /* ÅÄÖ: places 2, 3, 4 */
     while (lcd_flush(&l, 50)) { }
     char row[21];
     screen_row(0, row);
-    CHECK(row[0] == 0x08 + 4 && row[5] == 0x08 + 0);  /* Π, Γ */
+    CHECK(row[0] == 0x08 + 0 && row[5] == 0x08 + 1);
+    CHECK(m.cgram[0] == 0x1F && m.cgram[1] == 0x11);        /* Π */
+    CHECK(m.cgram[8] == 0x1F && m.cgram[9] == 0x10);        /* Γ */
     screen_row(1, row);
-    CHECK_STR(row, "AAO");
+    CHECK((uint8_t)row[0] == 0x0A && (uint8_t)row[1] == 0x0B && (uint8_t)row[2] == 0x0C);
+    CHECK(m.cgram[2 * 8 + 0] == 0x04 && m.cgram[2 * 8 + 1] == 0x0A);   /* Å (ring) */
+
+    /* a new screen with 10 letters of our own: 8 get a place, the last two a look-alike */
+    const char ten[] = {LCD_CY_BE, LCD_CY_DE, LCD_CY_ZHE, LCD_CY_ZE, LCD_CY_I, LCD_CY_SHORT_I,
+                        LCD_CY_EL, LCD_CY_U, LCD_CY_TSE, LCD_CY_CHE, 0};
+    lcd_set_row(&l, 0, ten);
+    lcd_set_row(&l, 1, "");
+    while (lcd_flush(&l, 50)) { }
+    screen_row(0, row);
+    for (int k = 0; k < 8; k++) CHECK((uint8_t)row[k] >= 0x08 && (uint8_t)row[k] <= 0x0F);
+    CHECK(row[8] == 'U' && row[9] == '4');                  /* Ц, Ч */
+    int slot_b = row[0] - 0x08;
+    CHECK(m.cgram[slot_b * 8 + 3] == 0x1E);                  /* Б has its belly in row 3 */
+    /* the same letter again: same place, nothing sent to CGRAM */
+    const char again[] = {LCD_CY_BE, 0};
+    lcd_set_row(&l, 2, again);
+    lcd_flush(&l, 50);
+    CHECK(l.slot_reload == 0);
+    screen_row(2, row);
+    CHECK(row[0] == 0x08 + slot_b);
 
     /* every fixed text of every language fits on the display */
     for (uint8_t lg = 0; lg < LANG_COUNT; lg++) {
@@ -344,10 +390,29 @@ static void test_languages_and_greek(void)
         alm_init(&eng, now, 0, NULL, NULL);
         rows_of(&v, r);
         for (int k = 0; k < 4; k++) CHECK(strlen(r[k]) <= 20 && strchr(r[k], '?') == NULL);
+        CHECK(own_letters(r) <= 8);
+        /* fire alarm with a cut cable, acknowledged, and a second item */
+        CHECK(alm_load(&eng, pts, 1, 0, now, NULL, 0) == 0);
+        alm_sync_time(&eng, 1794091260u, now);
+        alm_set_input(&eng, 1, 2, 2, 0, now);
+        rows_of(&v, r);
+        CHECK(own_letters(r) <= 8);
+        alm_set_input(&eng, 1, 2, 2, 2, now);
+        rows_of(&v, r);
+        CHECK(own_letters(r) <= 8);
+        alm_ack(&eng, 1, now);
+        rows_of(&v, r);
+        CHECK(own_letters(r) <= 8);
+        alm_set_hmi_lost(&eng, 1, now);
+        alm_init(&eng, now, 0, NULL, NULL);
+        alm_set_hmi_lost(&eng, 1, now);
+        rows_of(&v, r);
+        CHECK(own_letters(r) <= 8);
     }
     char t[32];
-    lcd_text(t, sizeof(t), "ΞΨ\xE2\x82\xAC");   /* letters we cannot draw, and the euro sign */
-    CHECK_STR(t, "???");
+    lcd_text(t, sizeof(t), "ΞΨ\xE2\x82\xAC");   /* Greek we draw, and the euro sign we cannot */
+    const char want_t[] = {LCD_GR_XI, LCD_GR_PSI, '?', 0};
+    CHECK_STR(t, want_t);
     lang = LANG_SV;
 }
 

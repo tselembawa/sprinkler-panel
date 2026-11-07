@@ -10,9 +10,8 @@
  * Order: fire (A), faults, B, delays, C, operation (Drift), disconnected points;
  * unacknowledged before acknowledged. Time is shown in Swedish time (CET/CEST).
  *
- * The fixed texts follow the language chosen on the Pi (sv en fi no da el); the point
- * texts lcd1/lcd2 are shown as written. Output is Latin-1 plus LCD_GR_* for Greek
- * (the LCD driver turns that into display codes).
+ * The fixed texts follow the language chosen on the Pi (sv en fi no da el ru); the point
+ * texts lcd1/lcd2 are shown as written. Output is LCD text codes (see lcd.h).
  */
 #ifndef LCD_VIEW_H
 #define LCD_VIEW_H
@@ -26,7 +25,7 @@
 #define LCD_VIEW_SWITCH_MS 3000u
 
 /* languages, same order as the HMI (hmi/tools/build_i18n.py LANGS) */
-typedef enum { LANG_SV = 0, LANG_EN, LANG_FI, LANG_NO, LANG_DA, LANG_EL, LANG_COUNT } lcd_lang_t;
+typedef enum { LANG_SV = 0, LANG_EN, LANG_FI, LANG_NO, LANG_DA, LANG_EL, LANG_RU, LANG_COUNT } lcd_lang_t;
 
 typedef struct {
     uint16_t index;          /* which item is shown */
@@ -39,9 +38,7 @@ void lcd_view_init(lcd_view_t *v);
 /* fills rows[0..3] (Latin-1, each at most 20 characters + 0) */
 void lcd_view_render(lcd_view_t *v, const alm_t *a, uint8_t lang, uint32_t now_ms,
                      char rows[LCD_ROWS][LCD_COLS + 1]);
-/* the character set the language needs */
-lcd_charset_t lcd_view_charset(uint8_t lang);
-/* UTF-8 text (as written in the C source) -> LCD text (Latin-1 + LCD_GR_*) */
+/* UTF-8 text (as written in the C source) -> LCD text codes (Latin-1, LCD_GR_*, LCD_CY_*) */
 void lcd_text(char *dst, size_t dst_size, const char *utf8);
 /* show the next item now (for a "next" button later) */
 void lcd_view_next(lcd_view_t *v, uint32_t now_ms);

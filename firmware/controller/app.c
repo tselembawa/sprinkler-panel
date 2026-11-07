@@ -374,7 +374,7 @@ static int lcd_i2c_write(void *ctx, uint8_t addr7, const uint8_t *data, uint16_t
 static void lcd_start(uint32_t now)
 {
     lcd_lang = pi.language;
-    if (lcd_init(&lcd, lcd_i2c_write, &hi2c1, HAL_Delay, LCD_ROM, lcd_view_charset(lcd_lang)) != 0) {
+    if (lcd_init(&lcd, lcd_i2c_write, &hi2c1, HAL_Delay, LCD_ROM) != 0) {
         lcd_next_retry = now + LCD_RETRY_MS;
         return;
     }
@@ -397,9 +397,8 @@ static void lcd_service(void)
         }
         return;
     }
-    if (pi.language != lcd_lang) {   /* language changed on the Pi */
+    if (pi.language != lcd_lang) {   /* language changed on the Pi: show it at once */
         lcd_lang = pi.language;
-        lcd_set_charset(&lcd, lcd_view_charset(lcd_lang));
         lcd_next_render = t;
     }
     if ((int32_t)(t - lcd_next_render) >= 0) {

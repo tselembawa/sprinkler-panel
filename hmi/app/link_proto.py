@@ -72,7 +72,7 @@ CFG_ERRORS = {1: "OUT_OF_RANGE", 2: "DUPLICATE_ID", 3: "DUPLICATE_ADDRESS", 4: "
               5: "DELAY_NOT_ALLOWED", 6: "TOO_LONG", 7: "TOO_MANY"}
 DISPLAY = {"A": "A", "B": "B", "C": "C", "D": "DRIFT", "F": "FAULT"}
 # language numbers on the link (and of the controller's LCD texts)
-LANGS = ("sv", "en", "fi", "no", "da", "el")
+LANGS = ("sv", "en", "fi", "no", "da", "el", "ru")
 
 
 class ProtocolError(Exception):

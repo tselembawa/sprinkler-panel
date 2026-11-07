@@ -16,7 +16,7 @@
 #include "pi_link_proto.h"
 
 #define PI_FW_MAJOR 0u
-#define PI_FW_MINOR 4u
+#define PI_FW_MINOR 5u
 
 typedef void (*pi_write_fn)(void *ctx, const uint8_t *data, uint16_t len);
 
@@ -45,7 +45,7 @@ typedef struct {
     uint16_t cfg_expected, cfg_received;
     uint8_t cfg_state;            /* 0 idle, 1 receiving, 2 checked (CFG_END OK) */
 
-    uint8_t language;             /* chosen on the Pi (0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el) */
+    uint8_t language;             /* chosen on the Pi (0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el, 6 ru) */
 
     uint32_t frames_ok, frames_bad;
 } pi_link_t;

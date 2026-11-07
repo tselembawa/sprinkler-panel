@@ -50,7 +50,7 @@
 #define PL_CFG_REC_LEN      52u
 #define PL_STATUS_LEN       43u
 
-#define PL_LANGUAGE_MAX 5u   /* 0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el */
+#define PL_LANGUAGE_MAX 6u   /* 0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el, 6 ru */
 #define PL_HMI_LOST_MS      5000u   /* no frame from the Pi this long -> HMI_LOST */
 
 #endif /* PI_LINK_PROTO_H */

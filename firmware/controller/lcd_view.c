@@ -46,13 +46,27 @@ static const char *const texts[LANG_COUNT][T_COUNT] = {
                  "ΠΥΡΚΑΓΙΑ", "ΣΦΑΛΜΑ", "ΣΥΝΑΓΕΡΜΟΣ B", "ΚΑΘΥΣΤΕΡΗΣΗ", "ΣΥΝΑΓΕΡΜΟΣ C", "ΛΕΙΤΟΥΡΓΙΑ",
                  "ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ", "ΔΕΝ ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ",
                  "ΔΙΑΚΟΠΗ", "ΒΡΑΧΥΚΥΚΛΩΜΑ", "ΑΠΩΛΕΙΑ MODULE", "ΣΥΝΑΓΕΡΜΟΣ ΣΕ %ld S", "ΕΝΕΡΓΟ"},
+    /* Russian: words chosen so that one screen needs at most 8 letters of our own */
+    [LANG_RU] = {"ПУЛЬТ СПРИНКЛЕРА", "НОРМАЛЬНАЯ РАБОТА", "СЕРВИС: %ld МИН", "ВРЕМЯ НЕ УСТАНОВЛЕНО",
+                 "НЕТ ТОЧЕК", "НЕТ СВЯЗИ С HMI",
+                 "ПОЖАР", "НЕИСПРАВНОСТЬ", "ТРЕВОГА B", "ЗАДЕРЖКА", "ТРЕВОГА C", "РАБОТА", "ОТКЛЮЧЕНО",
+                 "НЕ КВИТИРОВАНО", "КВИТИРОВАНО", "СБРОС КЛЮЧОМ", "ОБРЫВ", "КОРОТКОЕ ЗАМЫКАНИЕ",
+                 "НЕТ МОДУЛЯ", "ТРЕВОГА ЧЕРЕЗ %ld С", "АКТИВНО"},
 };
 
-/* Greek capitals U+0391..U+03A9: the Latin look-alike, or our own character */
+/* Greek capitals U+0391..U+03A9: the Latin look-alike, or a letter of our own */
 static const uint8_t greek_caps[25] = {
     'A', 'B', LCD_GR_GAMMA, LCD_GR_DELTA, 'E', 'Z', 'H', LCD_GR_THETA, 'I', 'K', LCD_GR_LAMDA, 'M',
-    'N', '?' /* Ξ */, 'O', LCD_GR_PI, 'P', '?', LCD_GR_SIGMA, 'T', 'Y', LCD_GR_PHI, 'X',
-    '?' /* Ψ */, LCD_GR_OMEGA,
+    'N', LCD_GR_XI, 'O', LCD_GR_PI, 'P', '?', LCD_GR_SIGMA, 'T', 'Y', LCD_GR_PHI, 'X',
+    LCD_GR_PSI, LCD_GR_OMEGA,
+};
+
+/* Cyrillic capitals U+0410..U+042F (А..Я) */
+static const uint8_t cyrillic_caps[32] = {
+    'A', LCD_CY_BE, 'B', LCD_GR_GAMMA, LCD_CY_DE, 'E', LCD_CY_ZHE, LCD_CY_ZE,
+    LCD_CY_I, LCD_CY_SHORT_I, 'K', LCD_CY_EL, 'M', 'H', 'O', LCD_GR_PI,
+    'P', 'C', 'T', LCD_CY_U, LCD_GR_PHI, 'X', LCD_CY_TSE, LCD_CY_CHE,
+    LCD_CY_SHA, LCD_CY_SHCHA, LCD_CY_HARD, LCD_CY_YERU, LCD_CY_SOFT, LCD_CY_E, LCD_CY_YU, LCD_CY_YA,
 };
 
 void lcd_text(char *dst, size_t dst_size, const char *utf8)
@@ -79,17 +93,16 @@ void lcd_text(char *dst, size_t dst_size, const char *utf8)
             out = (uint8_t)cp;                    /* ASCII and Latin-1 (Å Ä Ö Æ Ø ...) */
         } else if (cp >= 0x391u && cp <= 0x3A9u) {
             out = greek_caps[cp - 0x391u];
+        } else if (cp >= 0x410u && cp <= 0x42Fu) {
+            out = cyrillic_caps[cp - 0x410u];
+        } else if (cp == 0x401u) {
+            out = 'E';                            /* Ё */
         } else {
             out = '?';
         }
         dst[n++] = (char)out;
     }
     dst[n] = '\0';
-}
-
-lcd_charset_t lcd_view_charset(uint8_t lang)
-{
-    return lang == LANG_EL ? LCD_SET_GREEK : LCD_SET_NORDIC;
 }
 
 static const char *txt(uint8_t lang, unsigned t)

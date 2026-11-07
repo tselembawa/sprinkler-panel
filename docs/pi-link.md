@@ -55,7 +55,7 @@
 | 0x23 | CMD_DISABLE | point_id u16, disabled u8, user u8 | enabled u8 |
 | 0x25 | CMD_SERVICE | minutes u16 (0 = τέλος), user u8 | active u8 |
 | 0x30 | SET_TIME | unix u32, user u8, auto u8 | time u32 |
-| 0x31 | SET_LANGUAGE | language u8 (0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el) | language u8 |
+| 0x31 | SET_LANGUAGE | language u8 (0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el, 6 ru) | language u8 |
 | 0x40 | DEV_SET_KEY | tech u8 | – (μόνο στο πρωτότυπο, μέχρι τον κλειδοδιακόπτη) |
 | 0x60 | LOG | (controller → Pi, seq 0) κείμενο ASCII | – |
 | 0x7F | NACK | – | code u8 [+ στοιχεία] |

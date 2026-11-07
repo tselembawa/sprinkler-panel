@@ -2,14 +2,21 @@
 
 Edit the table, then run from the hmi folder:  python tools/build_i18n.py
 Each row: key -> (sv, en, fi, no, da, el). {name} style placeholders are filled in by the UI.
+Russian is in i18n_ru.py (same keys). The order of LANGS is also the language number the
+controller uses for its LCD texts (firmware/controller/lcd_view.h) - add new languages at the end.
 """
 
 import json
+import re
+import sys
 from pathlib import Path
 
-LANGS = ["sv", "en", "fi", "no", "da", "el"]
-NAMES = {"sv": "Svenska", "en": "English", "fi": "Suomi", "no": "Norsk", "da": "Dansk", "el": "Ελληνικά"}
-LOCALES = {"sv": "sv-SE", "en": "en-GB", "fi": "fi-FI", "no": "nb-NO", "da": "da-DK", "el": "el-GR"}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from i18n_ru import RU  # noqa: E402
+
+LANGS = ["sv", "en", "fi", "no", "da", "el", "ru"]
+NAMES = {"sv": "Svenska", "en": "English", "fi": "Suomi", "no": "Norsk", "da": "Dansk", "el": "Ελληνικά", "ru": "Русский"}
+LOCALES = {"sv": "sv-SE", "en": "en-GB", "fi": "fi-FI", "no": "nb-NO", "da": "da-DK", "el": "el-GR", "ru": "ru-RU"}
 
 T = {
     # --- top bar, tabs
@@ -265,7 +272,7 @@ T = {
     "set.apply_time": ("Ställ in tid", "Set time", "Aseta aika", "Still inn tid", "Indstil tid", "Ορισμός ώρας"),
     "set.sync": ("Hämta tid från den här enheten", "Use the time of this device", "Käytä tämän laitteen aikaa", "Hent tid fra denne enheten", "Hent tid fra denne enhed", "Χρήση της ώρας αυτής της συσκευής"),
     "set.lang_title": ("Språk", "Language", "Kieli", "Språk", "Sprog", "Γλώσσα"),
-    "set.lang_hint": ("Gäller hela gränssnittet, händelser och CSV-export.", "Applies to the whole interface, events and CSV export.", "Koskee koko käyttöliittymää, tapahtumia ja CSV-vientiä.", "Gjelder hele grensesnittet, hendelser og CSV-eksport.", "Gælder hele brugerfladen, hændelser og CSV-eksport.", "Ισχύει για όλη τη διεπαφή, τα συμβάντα και την εξαγωγή CSV."),
+    "set.lang_hint": ("Gäller hela gränssnittet, händelser, CSV-export och LCD-displayen.", "Applies to the whole interface, events, CSV export and the LCD display.", "Koskee koko käyttöliittymää, tapahtumia, CSV-vientiä ja LCD-näyttöä.", "Gjelder hele grensesnittet, hendelser, CSV-eksport og LCD-displayet.", "Gælder hele brugerfladen, hændelser, CSV-eksport og LCD-displayet.", "Ισχύει για όλη τη διεπαφή, τα συμβάντα, την εξαγωγή CSV και την οθόνη LCD."),
     "set.need_key": ("Vrid nyckelbrytaren till TEKNIKER för att ändra inställningar.", "Turn the key switch to TECHNICIAN to change settings.", "Käännä avainkytkin HUOLTO-asentoon muuttaaksesi asetuksia.", "Vri nøkkelbryteren til TEKNIKER for å endre innstillinger.", "Drej nøglekontakten til TEKNIKER for at ændre indstillinger.", "Γυρίστε τον κλειδοδιακόπτη στη θέση ΤΕΧΝΙΚΟΣ για αλλαγή ρυθμίσεων."),
     "set.time_saved": ("Tiden är inställd", "Time set", "Aika asetettu", "Tiden er stilt inn", "Tiden er indstillet", "Η ώρα ορίστηκε"),
     "set.lang_saved": ("Språket är ändrat", "Language changed", "Kieli vaihdettu", "Språket er endret", "Sproget er ændret", "Η γλώσσα άλλαξε"),
@@ -320,9 +327,13 @@ T = {
 
 def main():
     strings = {lang: {} for lang in LANGS}
+    assert set(RU) == set(T), f"i18n_ru.py: missing {sorted(set(T) - set(RU))}, extra {sorted(set(RU) - set(T))}"
     for key, values in T.items():
+        values = tuple(values) + (RU[key],)
         assert len(values) == len(LANGS), key
+        want = sorted(re.findall(r"{\w+}", values[0]))
         for lang, value in zip(LANGS, values):
+            assert sorted(re.findall(r"{\w+}", value)) == want, f"{key} [{lang}]: placeholders differ"
             strings[lang][key] = value
     out = {"default": "sv", "languages": NAMES, "locales": LOCALES, "strings": strings}
     path = Path(__file__).resolve().parent.parent / "app" / "static" / "i18n.json"
