@@ -32,6 +32,7 @@ CMD_RESET = 0x22
 CMD_DISABLE = 0x23
 CMD_SERVICE = 0x25
 SET_TIME = 0x30
+SET_LANGUAGE = 0x31
 DEV_SET_KEY = 0x40
 LOG = 0x60
 NACK = 0x7F
@@ -47,6 +48,7 @@ NACK_CODES = {
     8: "CFG_TOO_MANY",
     9: "CFG_CRC_MISMATCH",
     10: "BAD_VERSION",
+    11: "BAD_LANGUAGE",
 }
 
 CFG_RECORDS_PER_FRAME = 9   # 9 x 52 = 468 bytes <= 512
@@ -69,6 +71,8 @@ CFG_FIELDS = ("id", "line", "module", "channel", "category", "device_type", "del
 CFG_ERRORS = {1: "OUT_OF_RANGE", 2: "DUPLICATE_ID", 3: "DUPLICATE_ADDRESS", 4: "INVALID",
               5: "DELAY_NOT_ALLOWED", 6: "TOO_LONG", 7: "TOO_MANY"}
 DISPLAY = {"A": "A", "B": "B", "C": "C", "D": "DRIFT", "F": "FAULT"}
+# language numbers on the link (and of the controller's LCD texts)
+LANGS = ("sv", "en", "fi", "no", "da", "el")
 
 
 class ProtocolError(Exception):
@@ -184,6 +188,7 @@ def parse_status(p: bytes) -> dict:
         "service": {"active": service, "remaining_s": svc_left if service else 0},
         "key_tech": bool(f1 & 0x08),
         "hmi_lost": bool(f2 & 0x04),
+        "language": LANGS[(f2 >> 4) & 7] if ((f2 >> 4) & 7) < len(LANGS) else "sv",
         "time": ctime,
         "uptime_s": uptime,
         "config_version": cfg_ver,

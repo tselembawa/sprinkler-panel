@@ -44,8 +44,8 @@ extern I2C_HandleTypeDef hi2c1;     /* LCD */
 #define SOUNDER_LINE       1u       /* first output rule: the sounders are OUT1 of L1-M02 */
 #define SOUNDER_ADDR       2u
 #define WIRED_LINES        1u       /* only line 1 has an RS485 port on the prototype */
-#define LCD_ROM            LCD_ROM_A00   /* which character set the display has (see the test screen) */
-#define LCD_TEST_MS        6000u    /* test screen after start-up */
+#define LCD_ROM            LCD_ROM_A00   /* the display's character ROM (ours: A00, tested 2026-11-08) */
+#define LCD_SPLASH_MS      2000u    /* start-up screen */
 #define LCD_RETRY_MS       5000u    /* no display: look for it again */
 #define LCD_RENDER_MS      250u
 #define LCD_CHARS_PER_PASS 6u       /* a few characters per loop pass, ~0.5 ms each */
@@ -66,7 +66,8 @@ static uint32_t modules_for_version = 0xFFFFFFFFu;
 static pi_link_t pi;
 static lcd_t lcd;
 static lcd_view_t lcd_screen;
-static uint32_t lcd_test_until, lcd_next_render, lcd_next_retry;
+static uint32_t lcd_next_render, lcd_next_retry;
+static uint8_t lcd_lang;
 
 static uint32_t next_cycle, next_tick, last_frame_end;
 static uint8_t poll_index;
@@ -372,23 +373,19 @@ static int lcd_i2c_write(void *ctx, uint8_t addr7, const uint8_t *data, uint16_t
 
 static void lcd_start(uint32_t now)
 {
-    if (lcd_init(&lcd, lcd_i2c_write, &hi2c1, HAL_Delay, LCD_ROM) != 0) {
+    lcd_lang = pi.language;
+    if (lcd_init(&lcd, lcd_i2c_write, &hi2c1, HAL_Delay, LCD_ROM, lcd_view_charset(lcd_lang)) != 0) {
         lcd_next_retry = now + LCD_RETRY_MS;
         return;
     }
     out("LCD hittad pa adress 0x%02X\n", lcd.addr7);
     /* test screen: which character set? Row 2 uses our own letters, row 3 the ROM A02 codes */
-    char row0[24];
-    snprintf(row0, sizeof(row0), "LCD OK  ADR 0x%02X", lcd.addr7);
-    lcd_set_row(&lcd, 0, row0);
-    lcd.rom = LCD_ROM_A00;
-    lcd_set_row(&lcd, 1, "A00: \xC5\xC4\xD6 \xE5\xE4\xF6");
-    lcd.rom = LCD_ROM_A02;
-    lcd_set_row(&lcd, 2, "A02: \xC5\xC4\xD6 \xE5\xE4\xF6");
-    lcd.rom = LCD_ROM;
-    lcd_set_row(&lcd, 3, "RAD 2 ELLER 3 RATT?");
-    lcd_test_until = now + LCD_TEST_MS;
-    lcd_next_render = lcd_test_until;
+    char row[24];
+    snprintf(row, sizeof(row), "SPRINKLER  FW %u.%u", PI_FW_MAJOR, PI_FW_MINOR);
+    lcd_set_row(&lcd, 0, row);
+    snprintf(row, sizeof(row), "LCD OK  ADR 0x%02X", lcd.addr7);
+    lcd_set_row(&lcd, 1, row);
+    lcd_next_render = now + LCD_SPLASH_MS;
 }
 
 static void lcd_service(void)
@@ -400,10 +397,15 @@ static void lcd_service(void)
         }
         return;
     }
+    if (pi.language != lcd_lang) {   /* language changed on the Pi */
+        lcd_lang = pi.language;
+        lcd_set_charset(&lcd, lcd_view_charset(lcd_lang));
+        lcd_next_render = t;
+    }
     if ((int32_t)(t - lcd_next_render) >= 0) {
         lcd_next_render = t + LCD_RENDER_MS;
         char rows[LCD_ROWS][LCD_COLS + 1];
-        lcd_view_render(&lcd_screen, &engine, t, rows);
+        lcd_view_render(&lcd_screen, &engine, lcd_lang, t, rows);
         for (uint8_t r = 0; r < LCD_ROWS; r++) {
             lcd_set_row(&lcd, r, rows[r]);
         }

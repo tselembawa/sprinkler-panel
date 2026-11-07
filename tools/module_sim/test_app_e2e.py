@@ -130,11 +130,11 @@ def sounders_on(m):
 
 def test_status_time_sync_and_log(bench):
     st = bench.ctrl.get_status()
-    assert st["firmware"] == "0.3" and st["protocol"] == 1
+    assert st["firmware"] == "0.4" and st["protocol"] == 1
     assert st["relays"]["K3_FAULT_OK"] and not st["relays"]["K1_A"]
     assert abs(st["time"] - time.time()) < 5          # the Pi set the controller clock
     assert st["leds"]["green_power"] and not st["hmi_lost"]
-    assert any(line.startswith("Sprinkler controller fw 0.3") for line in bench.logs) or \
+    assert any(line.startswith("Sprinkler controller fw 0.4") for line in bench.logs) or \
         any("ONLINE" in line for line in bench.logs)
 
 
@@ -288,3 +288,17 @@ def test_controller_restart_keeps_event_numbering(bench):
     ev = c.get_events(last, 500)
     assert ev and ev[0]["seq"] == last + 1 and ev[0]["type"] == "STARTUP"
     assert st["last_event_seq"] >= last + 1
+
+
+def test_language_for_the_panel_lcd(bench):
+    c = bench.ctrl
+    assert c.get_status()["language"] == "sv"           # after start-up
+    assert c.set_language("el") == {"language": "el"}
+    assert c.get_status()["language"] == "el"
+    with pytest.raises(CommandError) as e:
+        c.set_language("de")
+    assert e.value.code == "BAD_LANGUAGE"
+    with pytest.raises(CommandError) as e:
+        c._req(L.SET_LANGUAGE, bytes([9]))              # the controller checks it too
+    assert e.value.code == "BAD_LANGUAGE"
+    assert c.get_status()["language"] == "el"

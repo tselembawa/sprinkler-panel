@@ -66,7 +66,8 @@ void pi_link_log(pi_link_t *l, const char *text)
 static int is_command(uint8_t type)
 {
     return (type >= PL_CFG_BEGIN && type <= PL_CFG_ACTIVATE) ||
-           (type >= PL_CMD_ACK && type <= PL_CMD_SERVICE) || type == PL_SET_TIME || type == PL_DEV_SET_KEY;
+           (type >= PL_CMD_ACK && type <= PL_CMD_SERVICE) || type == PL_SET_TIME ||
+           type == PL_SET_LANGUAGE || type == PL_DEV_SET_KEY;
 }
 
 static uint8_t nack_of(alm_result_t r)
@@ -99,7 +100,7 @@ static uint16_t do_status(pi_link_t *l, uint32_t now)
                          (s.buzzer ? 0x10u : 0u) | (s.led_red_a ? 0x20u : 0u) |
                          (s.led_yellow_fault ? 0x40u : 0u) | (s.led_green_drift ? 0x80u : 0u));
     resp[17] = (uint8_t)((s.led_green_power ? 0x01u : 0u) | (s.led_yellow_service ? 0x02u : 0u) |
-                         (s.hmi_lost ? 0x04u : 0u));
+                         (s.hmi_lost ? 0x04u : 0u) | (uint8_t)((l->language & 0x07u) << 4));
     put32(&resp[18], s.service_remaining_s);
     put32(&resp[22], s.time);
     put32(&resp[26], s.uptime_s);
@@ -365,6 +366,15 @@ static uint16_t handle(pi_link_t *l, uint8_t type, const uint8_t *p, uint16_t le
         put32(&resp[0], alm_time(a, now));
         return 4;
     }
+    case PL_SET_LANGUAGE:
+        NEED(1);
+        if (p[0] > PL_LANGUAGE_MAX) {
+            *nack = PL_NACK_BAD_LANGUAGE;
+            return 0;
+        }
+        l->language = p[0];
+        resp[0] = l->language;
+        return 1;
     case PL_DEV_SET_KEY:
         NEED(1);
         alm_set_key(a, p[0]);

@@ -27,6 +27,7 @@
 #define PL_CMD_DISABLE      0x23u
 #define PL_CMD_SERVICE      0x25u
 #define PL_SET_TIME         0x30u
+#define PL_SET_LANGUAGE        0x31u
 #define PL_DEV_SET_KEY      0x40u
 #define PL_LOG              0x60u
 #define PL_NACK             0x7Fu
@@ -41,6 +42,7 @@
 #define PL_NACK_CFG_TOO_MANY     8u
 #define PL_NACK_CFG_CRC_MISMATCH 9u
 #define PL_NACK_BAD_VERSION      10u
+#define PL_NACK_BAD_LANGUAGE      11u
 
 #define PL_POINT_REC_LEN    10u
 #define PL_EVENT_REC_LEN    21u
@@ -48,6 +50,7 @@
 #define PL_CFG_REC_LEN      52u
 #define PL_STATUS_LEN       43u
 
+#define PL_LANGUAGE_MAX 5u   /* 0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el */
 #define PL_HMI_LOST_MS      5000u   /* no frame from the Pi this long -> HMI_LOST */
 
 #endif /* PI_LINK_PROTO_H */

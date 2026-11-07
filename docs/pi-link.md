@@ -55,9 +55,13 @@
 | 0x23 | CMD_DISABLE | point_id u16, disabled u8, user u8 | enabled u8 |
 | 0x25 | CMD_SERVICE | minutes u16 (0 = τέλος), user u8 | active u8 |
 | 0x30 | SET_TIME | unix u32, user u8, auto u8 | time u32 |
+| 0x31 | SET_LANGUAGE | language u8 (0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el) | language u8 |
 | 0x40 | DEV_SET_KEY | tech u8 | – (μόνο στο πρωτότυπο, μέχρι τον κλειδοδιακόπτη) |
 | 0x60 | LOG | (controller → Pi, seq 0) κείμενο ASCII | – |
 | 0x7F | NACK | – | code u8 [+ στοιχεία] |
+
+Η γλώσσα είναι αυτή που διάλεξε ο χρήστης στο HMI· το Pi την ξαναστέλνει όταν η κατάσταση δείχνει άλλη
+(π.χ. μετά από επανεκκίνηση του controller). Ισχύει για τα σταθερά κείμενα της LCD, όχι για τα lcd1/lcd2 των σημείων.
 
 `SET_TIME` με auto = 1 περνάει χωρίς κλειδί μόνο όταν το ρολόι του controller δεν έχει οριστεί ακόμα
 (το Pi δίνει την ώρα μετά από κάθε εκκίνηση του controller, μέχρι να μπει RTC με μπαταρία).
@@ -65,7 +69,8 @@
 ### Κωδικοί NACK
 
 1 UNKNOWN_TYPE · 2 BAD_LENGTH · 3 ACCESS_DENIED · 4 BAD_DURATION · 5 UNKNOWN_POINT · 6 BAD_TIME ·
-7 CFG_SEQUENCE · 8 CFG_TOO_MANY · 9 CFG_CRC_MISMATCH (+ CRC που υπολόγισε ο controller, u32) · 10 BAD_VERSION
+7 CFG_SEQUENCE · 8 CFG_TOO_MANY · 9 CFG_CRC_MISMATCH (+ CRC που υπολόγισε ο controller, u32) · 10 BAD_VERSION ·
+11 BAD_LANGUAGE
 
 ### Status (GET_STATUS) — 43 bytes + λίστα
 
@@ -77,7 +82,7 @@
 | 14 | u8 | LED B/C: 0 off, 1 steady, 2 flash |
 | 15 | u8 | σειρήνες: 0 off, 1 sounding, 2 silenced |
 | 16 | u8 | bit 0 transmission_blocked, 1 silenced, 2 service, 3 key_tech, 4 buzzer, 5 LED A, 6 LED fault, 7 LED drift |
-| 17 | u8 | bit 0 LED power (Drift), 1 LED service, 2 HMI lost |
+| 17 | u8 | bit 0 LED power (Drift), 1 LED service, 2 HMI lost, bits 4–6 γλώσσα της LCD |
 | 18 | 6 × u32 | service_remaining_s, time, uptime_s, cfg_version, cfg_crc, last_seq |
 | 42 | u8 | πλήθος χαμένων modules (≤ 16), ακολουθούν ζεύγη line u8, address u8 |
 

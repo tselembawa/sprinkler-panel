@@ -8,6 +8,103 @@
 
 enum { R_FIRE = 0, R_FAULT, R_B, R_PENDING, R_C, R_DRIFT, R_OFF, R_COUNT, R_NONE = 0xFF };
 
+/* ---- fixed texts, UTF-8 here, at most 20 characters on the display ------------------------- */
+enum {
+    T_TITLE, T_NORMAL, T_SERVICE, T_NO_TIME, T_NO_CONFIG, T_HMI_LOST,
+    T_FIRE, T_FAULT, T_B, T_PENDING, T_C, T_DRIFT, T_OFF,
+    T_UNACKED, T_ACKED, T_LATCHED, T_OPEN, T_SHORT, T_MODULE_LOST, T_DELAY, T_ACTIVE, T_COUNT
+};
+
+static const char *const texts[LANG_COUNT][T_COUNT] = {
+    [LANG_SV] = {"SPRINKLERCENTRAL", "DRIFT NORMAL", "SERVICE %ld MIN KVAR", "TID EJ INSTÄLLD",
+                 "INGEN KONFIGURATION", "PANEL (HMI) SAKNAS",
+                 "BRANDLARM", "FEL", "B-LARM", "FÖRDRÖJNING", "C-LARM", "DRIFT", "FRÅNKOPPLAD",
+                 "EJ KVITTERAD", "KVITTERAD", "ÅTERSTÄLL MED NYCKEL", "AVBROTT", "KORTSLUTNING",
+                 "MODUL SAKNAS", "LARM OM %ld S", "AKTIV"},
+    [LANG_EN] = {"SPRINKLER PANEL", "NORMAL OPERATION", "SERVICE %ld MIN LEFT", "TIME NOT SET",
+                 "NO CONFIGURATION", "PANEL (HMI) MISSING",
+                 "FIRE ALARM", "FAULT", "B ALARM", "DELAY", "C ALARM", "OPERATION", "DISABLED",
+                 "NOT ACKNOWLEDGED", "ACKNOWLEDGED", "RESET WITH KEY", "OPEN CIRCUIT", "SHORT CIRCUIT",
+                 "MODULE MISSING", "ALARM IN %ld S", "ACTIVE"},
+    [LANG_FI] = {"SPRINKLERKESKUS", "NORMAALI TILA", "HUOLTO %ld MIN", "AIKAA EI ASETETTU",
+                 "EI KONFIGURAATIOTA", "HMI-PANEELI PUUTTUU",
+                 "PALOHÄLYTYS", "VIKA", "B-HÄLYTYS", "VIIVE", "C-HÄLYTYS", "KÄYNTI", "POIS KYTKETTY",
+                 "KUITTAAMATTA", "KUITATTU", "PALAUTA AVAIMELLA", "KATKOS", "OIKOSULKU",
+                 "MODUULI PUUTTUU", "HÄLYTYS %ld S", "AKTIIVINEN"},
+    [LANG_NO] = {"SPRINKLERSENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN IGJ.", "TID IKKE STILT",
+                 "INGEN KONFIGURASJON", "PANEL (HMI) MANGLER",
+                 "BRANNALARM", "FEIL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
+                 "IKKE KVITTERT", "KVITTERT", "NULLSTILL MED NØKKEL", "BRUDD", "KORTSLUTNING",
+                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV"},
+    [LANG_DA] = {"SPRINKLERCENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN", "TID IKKE INDSTILLET",
+                 "INGEN KONFIGURATION", "PANEL (HMI) MANGLER",
+                 "BRANDALARM", "FEJL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
+                 "IKKE KVITTERET", "KVITTERET", "NULSTIL MED NØGLE", "AFBRYDELSE", "KORTSLUTNING",
+                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV"},
+    [LANG_EL] = {"ΠΙΝΑΚΑΣ SPRINKLER", "ΚΑΝΟΝΙΚΗ ΛΕΙΤΟΥΡΓΙΑ", "SERVICE %ld ΛΕΠΤΑ", "ΔΕΝ ΕΧΕΙ ΟΡΙΣΤΕΙ ΩΡΑ",
+                 "ΔΕΝ ΥΠΑΡΧΟΥΝ ΣΗΜΕΙΑ", "HMI ΕΚΤΟΣ ΣΥΝΔΕΣΗΣ",
+                 "ΠΥΡΚΑΓΙΑ", "ΣΦΑΛΜΑ", "ΣΥΝΑΓΕΡΜΟΣ B", "ΚΑΘΥΣΤΕΡΗΣΗ", "ΣΥΝΑΓΕΡΜΟΣ C", "ΛΕΙΤΟΥΡΓΙΑ",
+                 "ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ", "ΔΕΝ ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ",
+                 "ΔΙΑΚΟΠΗ", "ΒΡΑΧΥΚΥΚΛΩΜΑ", "ΑΠΩΛΕΙΑ MODULE", "ΣΥΝΑΓΕΡΜΟΣ ΣΕ %ld S", "ΕΝΕΡΓΟ"},
+};
+
+/* Greek capitals U+0391..U+03A9: the Latin look-alike, or our own character */
+static const uint8_t greek_caps[25] = {
+    'A', 'B', LCD_GR_GAMMA, LCD_GR_DELTA, 'E', 'Z', 'H', LCD_GR_THETA, 'I', 'K', LCD_GR_LAMDA, 'M',
+    'N', '?' /* Ξ */, 'O', LCD_GR_PI, 'P', '?', LCD_GR_SIGMA, 'T', 'Y', LCD_GR_PHI, 'X',
+    '?' /* Ψ */, LCD_GR_OMEGA,
+};
+
+void lcd_text(char *dst, size_t dst_size, const char *utf8)
+{
+    const uint8_t *s = (const uint8_t *)utf8;
+    size_t n = 0;
+    while (*s && n + 1u < dst_size) {
+        uint32_t cp;
+        if (s[0] < 0x80u) {
+            cp = *s++;
+        } else if ((s[0] & 0xE0u) == 0xC0u && (s[1] & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(s[0] & 0x1Fu) << 6) | (s[1] & 0x3Fu);
+            s += 2;
+        } else {
+            /* 3- and 4-byte characters are not used: skip the whole character */
+            s++;
+            while ((*s & 0xC0u) == 0x80u) {
+                s++;
+            }
+            cp = '?';
+        }
+        uint8_t out;
+        if (cp < 0x100u) {
+            out = (uint8_t)cp;                    /* ASCII and Latin-1 (Å Ä Ö Æ Ø ...) */
+        } else if (cp >= 0x391u && cp <= 0x3A9u) {
+            out = greek_caps[cp - 0x391u];
+        } else {
+            out = '?';
+        }
+        dst[n++] = (char)out;
+    }
+    dst[n] = '\0';
+}
+
+lcd_charset_t lcd_view_charset(uint8_t lang)
+{
+    return lang == LANG_EL ? LCD_SET_GREEK : LCD_SET_NORDIC;
+}
+
+static const char *txt(uint8_t lang, unsigned t)
+{
+    return texts[lang < LANG_COUNT ? lang : LANG_SV][t];
+}
+
+/* a fixed text in LCD form; up to two numbers through printf */
+static void tx(char *dst, size_t size, uint8_t lang, unsigned t, long num)
+{
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), txt(lang, t), num);
+    lcd_text(dst, size, tmp);
+}
+
 /* rank of point i, and whether it waits for Kvittera */
 static uint8_t rank_of(const alm_t *a, uint16_t i, uint8_t *unacked)
 {
@@ -81,26 +178,25 @@ static void put_lr(char *row, const char *left, const char *right)
     }
 }
 
-static const char *fault_text(uint8_t f)
+static unsigned fault_t(uint8_t f)
 {
     switch (f) {
-    case PF_OPEN:        return "AVBROTT";
-    case PF_SHORT:       return "KORTSLUTNING";
-    case PF_MODULE_LOST: return "MODUL SAKNAS";
-    default:             return "";
+    case PF_OPEN:  return T_OPEN;
+    case PF_SHORT: return T_SHORT;
+    default:       return T_MODULE_LOST;
     }
 }
 
-static const char *label_of(uint8_t r)
+static unsigned label_t(uint8_t r)
 {
     switch (r) {
-    case R_FIRE:    return "BRANDLARM";
-    case R_FAULT:   return "FEL";
-    case R_B:       return "B-LARM";
-    case R_PENDING: return "F\xD6RDR\xD6JNING";
-    case R_C:       return "C-LARM";
-    case R_DRIFT:   return "DRIFT";
-    default:        return "FR\xC5NKOPPLAD";
+    case R_FIRE:    return T_FIRE;
+    case R_FAULT:   return T_FAULT;
+    case R_B:       return T_B;
+    case R_PENDING: return T_PENDING;
+    case R_C:       return T_C;
+    case R_DRIFT:   return T_DRIFT;
+    default:        return T_OFF;
     }
 }
 
@@ -171,36 +267,41 @@ void lcd_view_next(lcd_view_t *v, uint32_t now_ms)
     v->next_switch_ms = now_ms + LCD_VIEW_SWITCH_MS;
 }
 
-static void quiet_screen(const alm_t *a, uint32_t now_ms, char rows[LCD_ROWS][LCD_COLS + 1])
+static void quiet_screen(const alm_t *a, uint8_t lang, uint32_t now_ms, char rows[LCD_ROWS][LCD_COLS + 1])
 {
     alm_status_t s;
     alm_status(a, now_ms, &s);
-    put(rows[0], "SPRINKLERCENTRAL");
+    char tmp[64];
+    tx(tmp, sizeof(tmp), lang, T_TITLE, 0);
+    put(rows[0], tmp);
     if (s.service_active) {
-        char tmp[40];
         unsigned long min = (s.service_remaining_s + 59u) / 60u;
-        snprintf(tmp, sizeof(tmp), "SERVICE %lu MIN KVAR", min > 999u ? 999u : min);
-        put(rows[1], tmp);
+        tx(tmp, sizeof(tmp), lang, T_SERVICE, (long)(min > 999u ? 999u : min));
     } else {
-        put(rows[1], "DRIFT NORMAL");
+        tx(tmp, sizeof(tmp), lang, T_NORMAL, 0);
     }
+    put(rows[1], tmp);
     if (s.time >= CLOCK_VALID_FROM) {
         char date[11], hhmm[6];
         lcd_local_time(s.time, date, hhmm);
         put_lr(rows[2], date, hhmm);
     } else {
-        put(rows[2], "TID EJ INST\xC4LLD");
+        tx(tmp, sizeof(tmp), lang, T_NO_TIME, 0);
+        put(rows[2], tmp);
     }
     if (a->n == 0) {
-        put(rows[3], "INGEN KONFIGURATION");
+        tx(tmp, sizeof(tmp), lang, T_NO_CONFIG, 0);
+        put(rows[3], tmp);
     } else if (s.hmi_lost) {
-        put(rows[3], "PANEL (HMI) SAKNAS");
+        tx(tmp, sizeof(tmp), lang, T_HMI_LOST, 0);
+        put(rows[3], tmp);
     } else {
         rows[3][0] = '\0';
     }
 }
 
-void lcd_view_render(lcd_view_t *v, const alm_t *a, uint32_t now_ms, char rows[LCD_ROWS][LCD_COLS + 1])
+void lcd_view_render(lcd_view_t *v, const alm_t *a, uint8_t lang, uint32_t now_ms,
+                     char rows[LCD_ROWS][LCD_COLS + 1])
 {
     for (uint8_t r = 0; r < LCD_ROWS; r++) {
         rows[r][0] = '\0';
@@ -209,7 +310,7 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint32_t now_ms, char rows[L
     int first = item(a, 0, &count);
     if (count == 0) {
         v->count = 0;
-        quiet_screen(a, now_ms, rows);
+        quiet_screen(a, lang, now_ms, rows);
         return;
     }
     uint16_t first_id = a->cfg[first].id;
@@ -240,17 +341,20 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint32_t now_ms, char rows[L
     if (count > 1u) {
         snprintf(nn, sizeof(nn), "%u/%u", (unsigned)(v->index + 1u), (unsigned)count);
     }
-    put_lr(rows[0], label_of(r), nn);
+    char label[64];
+    tx(label, sizeof(label), lang, label_t(r), 0);
+    put_lr(rows[0], label, nn);
     put(rows[1], c->lcd1);
     put(rows[2], c->lcd2);
 
     char addr[16];
     snprintf(addr, sizeof(addr), "L%u-M%02u-IN%u", c->line, c->module, c->channel);
-    char state[32] = "";
+    char state[64] = "", tmp[64];
     switch (r) {
     case R_FAULT:
         if (rt->state == PS_NORMAL || rt->state == PS_PENDING) {
-            put_lr(rows[3], fault_text(rt->fault), addr);
+            tx(tmp, sizeof(tmp), lang, fault_t(rt->fault), 0);
+            put_lr(rows[3], tmp, addr);
             return;
         }
         /* a fault-category point in alarm: like the others */
@@ -259,22 +363,18 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint32_t now_ms, char rows[L
     case R_B:
     case R_C:
     case R_DRIFT:
-        if (r == R_DRIFT) {
-            strcpy(state, "AKTIV");
-        } else if (rt->state == PS_LATCHED) {
-            strcpy(state, "\xC5TERST\xC4LL MED NYCKEL");
-        } else {
-            strcpy(state, unacked ? "EJ KVITTERAD" : "KVITTERAD");
-        }
+        tx(state, sizeof(state), lang,
+           r == R_DRIFT ? T_ACTIVE : rt->state == PS_LATCHED ? T_LATCHED : unacked ? T_UNACKED : T_ACKED, 0);
         if (rt->fault != PF_NONE) {
+            tx(tmp, sizeof(tmp), lang, fault_t(rt->fault), 0);
             strncat(state, " +", sizeof(state) - strlen(state) - 1u);
-            strncat(state, fault_text(rt->fault), sizeof(state) - strlen(state) - 1u);
+            strncat(state, tmp, sizeof(state) - strlen(state) - 1u);
         }
         put(rows[3], state);
         return;
     case R_PENDING: {
         int16_t left = alm_pending_left_s(a, i, now_ms);
-        snprintf(state, sizeof(state), "LARM OM %d S", left < 0 ? 0 : left);
+        tx(state, sizeof(state), lang, T_DELAY, left < 0 ? 0 : left);
         put(rows[3], state);
         return;
     }

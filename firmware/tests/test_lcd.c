@@ -101,7 +101,7 @@ static void test_finds_address_and_writes_rows(void)
 {
     lcd_t l;
     hd_reset(0x3F);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
     CHECK(l.addr7 == 0x3F && l.ok && m.display_on && !m.mode8);
     lcd_set_row(&l, 0, "HELLO");
     lcd_set_row(&l, 2, "THIRD ROW");
@@ -125,7 +125,7 @@ static void test_no_display(void)
 {
     lcd_t l;
     hd_reset(0x50);                        /* nothing at 0x27 / 0x3F */
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == -1);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == -1);
     CHECK(!l.ok && l.addr7 == 0);
     lcd_set_row(&l, 0, "X");
     CHECK(lcd_flush(&l, 10) > 0);           /* nothing sent, still to do */
@@ -135,7 +135,7 @@ static void test_swedish_letters(void)
 {
     lcd_t l;
     hd_reset(0x27);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
     lcd_set_row(&l, 0, "\xC5\xC4\xD6 \xE5\xE4\xF6");     /* ÅÄÖ åäö in Latin-1 */
     while (lcd_flush(&l, 50)) { }
     const uint8_t want[] = {0x08, 0x09, 0x0A, ' ', 0x0B, 0xE1, 0xEF};
@@ -144,21 +144,21 @@ static void test_swedish_letters(void)
     CHECK(m.cgram[0 * 8 + 0] == 0x04 && m.cgram[0 * 8 + 1] == 0x0A);
     CHECK(m.cgram[2 * 8 + 6] == 0x0E);
     /* ROM A02: Latin-1 codes as they are */
-    CHECK(lcd_map(0xC5, LCD_ROM_A02) == 0xC5 && lcd_map(0xF6, LCD_ROM_A02) == 0xF6);
-    CHECK(lcd_map('A', LCD_ROM_A00) == 'A' && lcd_map(0x01, LCD_ROM_A00) == '?');
+    CHECK(lcd_map(0xC5, LCD_ROM_A02, 0) == 0xC5 && lcd_map(0xF6, LCD_ROM_A02, 0) == 0xF6);
+    CHECK(lcd_map('A', LCD_ROM_A00, 0) == 'A' && lcd_map(0x01, LCD_ROM_A00, 0) == '?');
 }
 
 static void test_display_unplugged_then_back(void)
 {
     lcd_t l;
     hd_reset(0x27);
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
     m.present_addr = 0;                    /* cable out */
     lcd_set_row(&l, 0, "ABC");
     lcd_flush(&l, 10);
     CHECK(!l.ok && l.errors > 0);
     hd_reset(0x27);                        /* back (powered up again) */
-    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00) == 0);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
     lcd_set_row(&l, 0, "ABC");
     while (lcd_flush(&l, 10)) { }
     char r[21];
@@ -181,10 +181,11 @@ static void test_swedish_time(void)
 /* ---- screens -------------------------------------------------------------------------------- */
 static alm_t eng;
 static uint32_t now = 1000;
+static uint8_t lang = LANG_SV;
 
 static void rows_of(lcd_view_t *v, char rows[4][21])
 {
-    lcd_view_render(v, &eng, now, rows);
+    lcd_view_render(v, &eng, lang, now, rows);
 }
 
 static void test_screens(void)
@@ -288,6 +289,68 @@ static void test_screens(void)
     CHECK_STR(r[3], "L1-M02-IN3");
 }
 
+static void test_languages_and_greek(void)
+{
+    /* the fixed texts follow the language, the point texts stay */
+    static const alm_point_cfg_t pts[] = {
+        {2, 1, 2, 2, CAT_A, DT_PRESSOSTAT, 0, 0, 1, 1, "PRESSOSTAT", "SEKTION 1"},
+    };
+    alm_init(&eng, now, 0, NULL, NULL);
+    CHECK(alm_load(&eng, pts, 1, 0, now, NULL, 0) == 0);
+    alm_set_input(&eng, 1, 2, 2, 0, now);      /* water: fire alarm */
+    lcd_view_t v;
+    char r[4][21];
+
+    lang = LANG_EN; lcd_view_init(&v); rows_of(&v, r);
+    CHECK_STR(r[0], "FIRE ALARM"); CHECK_STR(r[1], "PRESSOSTAT"); CHECK_STR(r[3], "NOT ACKNOWLEDGED");
+    lang = LANG_FI; lcd_view_init(&v); rows_of(&v, r);
+    CHECK_STR(r[0], "PALOH\xC4LYTYS");
+    lang = LANG_NO; alm_ack(&eng, 1, now); lcd_view_init(&v); rows_of(&v, r);
+    CHECK_STR(r[3], "KVITTERT");
+    alm_set_input(&eng, 1, 2, 2, 1, now);      /* latched */
+    rows_of(&v, r);
+    CHECK_STR(r[3], "NULLSTILL MED N\xD8KKEL");
+
+    /* Greek: own characters for Γ Δ Θ Λ Π Σ Φ Ω, Latin letters for the rest */
+    lang = LANG_EL; lcd_view_init(&v); rows_of(&v, r);
+    const char want0[] = {LCD_GR_PI, 'Y', 'P', 'K', 'A', LCD_GR_GAMMA, 'I', 'A', 0};   /* ΠΥΡΚΑΓΙΑ */
+    CHECK_STR(r[0], want0);
+    const char want3[] = {'E', LCD_GR_PI, 'A', 'N', 'A', LCD_GR_PHI, 'O', 'P', 'A', ' ', 'M', 'E', ' ',
+                          'K', LCD_GR_LAMDA, 'E', 'I', LCD_GR_DELTA, 'I', 0};          /* ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ */
+    CHECK_STR(r[3], want3);
+
+    /* on the display: Greek set loaded, Greek codes become CGRAM slots */
+    lcd_t l;
+    hd_reset(0x27);
+    CHECK(lcd_init(&l, model_write, NULL, no_delay, LCD_ROM_A00, LCD_SET_NORDIC) == 0);
+    lcd_set_row(&l, 0, "\xC5");
+    while (lcd_flush(&l, 50)) { }
+    CHECK(m.ddram[0] == 0x08);                 /* Å = slot 0 of the Nordic set */
+    CHECK(lcd_set_charset(&l, LCD_SET_GREEK) == 0);
+    CHECK(m.cgram[0] == 0x1F && m.cgram[1] == 0x10);   /* slot 0 is now Γ */
+    lcd_set_row(&l, 0, want0);
+    lcd_set_row(&l, 1, "\xC5\xC4\xD6");               /* Swedish capitals in Greek mode */
+    while (lcd_flush(&l, 50)) { }
+    char row[21];
+    screen_row(0, row);
+    CHECK(row[0] == 0x08 + 4 && row[5] == 0x08 + 0);  /* Π, Γ */
+    screen_row(1, row);
+    CHECK_STR(row, "AAO");
+
+    /* every fixed text of every language fits on the display */
+    for (uint8_t lg = 0; lg < LANG_COUNT; lg++) {
+        lang = lg;
+        lcd_view_init(&v);
+        alm_init(&eng, now, 0, NULL, NULL);
+        rows_of(&v, r);
+        for (int k = 0; k < 4; k++) CHECK(strlen(r[k]) <= 20 && strchr(r[k], '?') == NULL);
+    }
+    char t[32];
+    lcd_text(t, sizeof(t), "ΞΨ\xE2\x82\xAC");   /* letters we cannot draw, and the euro sign */
+    CHECK_STR(t, "???");
+    lang = LANG_SV;
+}
+
 int main(void)
 {
     test_finds_address_and_writes_rows();
@@ -296,6 +359,7 @@ int main(void)
     test_display_unplugged_then_back();
     test_swedish_time();
     test_screens();
+    test_languages_and_greek();
     printf("%s: %d checks, %d failed\n", failures ? "FAILED" : "OK", checks, failures);
     return failures != 0;
 }

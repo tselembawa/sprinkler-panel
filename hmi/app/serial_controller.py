@@ -355,6 +355,13 @@ class SerialController:
         (t,) = struct.unpack("<I", self._req(L.SET_TIME, struct.pack("<IBB", int(unix_time), user & 0xFF, 0)))
         return self._done({"time": t})
 
+    def set_language(self, lang: str) -> dict:
+        """Language of the controller's own texts (the panel LCD)."""
+        if lang not in L.LANGS:
+            raise CommandError("BAD_LANGUAGE", str(lang))
+        p = self._req(L.SET_LANGUAGE, bytes([L.LANGS.index(lang)]))
+        return self._done({"language": L.LANGS[p[0]]})
+
     # ------------------------------------------------------------- prototype only
     def dev_set_key(self, tech: bool):
         """Until the real key switch is wired to the controller, the HMI plays it."""

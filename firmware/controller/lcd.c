@@ -11,27 +11,52 @@ static const uint8_t row_addr[LCD_ROWS] = {0x00u, 0x40u, 0x14u, 0x54u};
 
 /* Our own characters, 5x8 dots. Used through the codes 0x08-0x0F (the same CGRAM slots
    as 0x00-0x07, which keeps 0 out of C strings). */
-enum { CG_AA = 0, CG_AE, CG_OE, CG_aa };
-static const uint8_t cgram[4][8] = {
+static const uint8_t cg_nordic[8][8] = {
     {0x04, 0x0A, 0x04, 0x0E, 0x11, 0x1F, 0x11, 0x00},   /* Å */
     {0x0A, 0x00, 0x0E, 0x11, 0x1F, 0x11, 0x11, 0x00},   /* Ä */
     {0x0A, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E, 0x00},   /* Ö */
     {0x04, 0x0A, 0x04, 0x0E, 0x01, 0x0F, 0x11, 0x0F},   /* å */
+    {0x0F, 0x14, 0x14, 0x1F, 0x14, 0x14, 0x17, 0x00},   /* Æ */
+    {0x0E, 0x13, 0x15, 0x15, 0x15, 0x19, 0x0E, 0x00},   /* Ø */
+    {0x00, 0x00, 0x1A, 0x05, 0x0F, 0x14, 0x0F, 0x00},   /* æ */
+    {0x00, 0x00, 0x0E, 0x13, 0x15, 0x19, 0x0E, 0x00},   /* ø */
+};
+static const uint8_t nordic_latin1[8] = {0xC5, 0xC4, 0xD6, 0xE5, 0xC6, 0xD8, 0xE6, 0xF8};
+
+static const uint8_t cg_greek[8][8] = {
+    {0x1F, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00},   /* Γ */
+    {0x04, 0x0A, 0x0A, 0x11, 0x11, 0x11, 0x1F, 0x00},   /* Δ */
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x0E, 0x00},   /* Θ */
+    {0x04, 0x0A, 0x0A, 0x11, 0x11, 0x11, 0x11, 0x00},   /* Λ */
+    {0x1F, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00},   /* Π */
+    {0x1F, 0x10, 0x08, 0x04, 0x08, 0x10, 0x1F, 0x00},   /* Σ */
+    {0x04, 0x0E, 0x15, 0x15, 0x15, 0x0E, 0x04, 0x00},   /* Φ */
+    {0x0E, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x1B, 0x00},   /* Ω */
 };
 
-uint8_t lcd_map(uint8_t c, uint8_t rom)
+uint8_t lcd_map(uint8_t c, uint8_t rom, uint8_t charset)
 {
     if (c >= 0x20u && c < 0x7Fu) {
         return c;
     }
+    if (c >= LCD_GR_GAMMA && c <= LCD_GR_OMEGA) {
+        return charset == LCD_SET_GREEK ? (uint8_t)(0x08u + (c - LCD_GR_GAMMA)) : (uint8_t)'?';
+    }
     if (rom == LCD_ROM_A02) {
         return c >= 0xA0u ? c : (uint8_t)'?';     /* A02 follows Latin-1 for these letters */
     }
+    if (charset == LCD_SET_NORDIC) {
+        for (uint8_t k = 0; k < 8u; k++) {
+            if (nordic_latin1[k] == c) {
+                return (uint8_t)(0x08u + k);
+            }
+        }
+    }
     switch (c) {   /* ROM A00 */
-    case 0xC5: return 0x08u + CG_AA;   /* Å */
-    case 0xC4: return 0x08u + CG_AE;   /* Ä */
-    case 0xD6: return 0x08u + CG_OE;   /* Ö */
-    case 0xE5: return 0x08u + CG_aa;   /* å */
+    case 0xC5: case 0xC4: case 0xC6: return (uint8_t)'A';   /* Å Ä Æ without own characters */
+    case 0xD6: case 0xD8:            return (uint8_t)'O';   /* Ö Ø */
+    case 0xE5: case 0xE6:            return (uint8_t)'a';   /* å æ */
+    case 0xF8:                       return 0xEFu;          /* ø -> ö */
     case 0xE4: return 0xE1u;           /* ä */
     case 0xF6: return 0xEFu;           /* ö */
     case 0xFC: return 0xF5u;           /* ü */
@@ -85,13 +110,47 @@ static int command(lcd_t *l, uint8_t cmd, uint32_t wait_ms)
 }
 
 /* ---- public ------------------------------------------------------------------------------- */
-int lcd_init(lcd_t *l, lcd_write_fn write, void *ctx, lcd_delay_fn delay, lcd_rom_t rom)
+static int load_charset(lcd_t *l, uint8_t charset)
+{
+    const uint8_t (*glyphs)[8] = charset == LCD_SET_GREEK ? cg_greek : cg_nordic;
+    if (command(l, 0x40u, 1)) {
+        return -1;
+    }
+    for (unsigned c = 0; c < 8u; c++) {
+        for (unsigned r = 0; r < 8u; r++) {
+            put_byte(l, glyphs[c][r], 1);
+        }
+        if (send(l)) {
+            return -1;
+        }
+    }
+    l->charset = charset;
+    l->cursor = 0xFFu;   /* the CGRAM writes moved the address */
+    return 0;
+}
+
+int lcd_set_charset(lcd_t *l, lcd_charset_t charset)
+{
+    if (!l->ok || l->charset == (uint8_t)charset) {
+        l->charset = (uint8_t)charset;
+        return l->ok ? 0 : -1;
+    }
+    if (load_charset(l, (uint8_t)charset)) {
+        return -1;
+    }
+    memset(l->shown, 0, sizeof(l->shown));   /* draw everything again with the new letters */
+    return 0;
+}
+
+int lcd_init(lcd_t *l, lcd_write_fn write, void *ctx, lcd_delay_fn delay, lcd_rom_t rom,
+             lcd_charset_t charset)
 {
     memset(l, 0, sizeof(*l));
     l->write = write;
     l->ctx = ctx;
     l->delay = delay;
     l->rom = (uint8_t)rom;
+    l->charset = (uint8_t)charset;
     l->backlight = 1;
     l->cursor = 0xFFu;
     memset(l->want, ' ', sizeof(l->want));
@@ -120,23 +179,13 @@ int lcd_init(lcd_t *l, lcd_write_fn write, void *ctx, lcd_delay_fn delay, lcd_ro
         command(l, 0x06u, 1)) {       /* cursor moves right, no shift */
         return -1;
     }
-    /* our characters into CGRAM */
-    if (command(l, 0x40u, 1)) {
+    if (load_charset(l, (uint8_t)charset)) {
         return -1;
-    }
-    for (unsigned c = 0; c < 4u; c++) {
-        for (unsigned r = 0; r < 8u; r++) {
-            put_byte(l, cgram[c][r], 1);
-        }
-        if (send(l)) {
-            return -1;
-        }
     }
     if (command(l, 0x0Cu, 1)) {       /* display on, no cursor, no blink */
         return -1;
     }
     memset(l->shown, ' ', sizeof(l->shown));   /* after "clear" */
-    l->cursor = 0xFFu;                           /* the CGRAM writes moved the address */
     return 0;
 }
 
@@ -147,7 +196,7 @@ void lcd_set_row(lcd_t *l, uint8_t row, const char *text)
     }
     uint8_t c = 0;
     for (; c < LCD_COLS && text[c]; c++) {
-        l->want[row][c] = lcd_map((uint8_t)text[c], l->rom);
+        l->want[row][c] = lcd_map((uint8_t)text[c], l->rom, l->charset);
     }
     for (; c < LCD_COLS; c++) {
         l->want[row][c] = ' ';

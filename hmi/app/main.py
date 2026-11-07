@@ -90,6 +90,7 @@ class Background:
         while not self._stop.wait(0.5):
             try:
                 push_config_if_needed()
+                push_language_if_needed()
                 sync_events()
                 if offline:
                     print("controller: contact again", flush=True)
@@ -119,6 +120,15 @@ CONFIG_LOCK = threading.Lock()
 _rejected_crc: int | None = None
 
 
+def push_language_if_needed():
+    """The panel LCD speaks the language chosen here (the controller forgets it at restart)."""
+    if not hasattr(controller, "set_language"):
+        return
+    lang = language()
+    if controller.get_status().get("language") != lang:
+        controller.set_language(lang)
+
+
 def push_config_if_needed():
     """The Pi makes sure the controller runs the stored configuration: at start-up, and
     whenever the controller lost it (restart without stored configuration, new controller)."""
@@ -141,6 +151,7 @@ def push_config_if_needed():
 async def lifespan(app):
     try:
         push_config_if_needed()
+        push_language_if_needed()
         sync_events()
     except ControllerUnavailable as e:
         print("controller: no contact at start-up -", e, flush=True)
@@ -385,6 +396,10 @@ async def api_settings(request: Request):
     if lang not in LANGUAGES:
         return err("BAD_LANGUAGE")
     db.set_setting("language", lang)
+    try:
+        push_language_if_needed()     # the panel LCD follows at once
+    except ControllerUnavailable:
+        pass                          # the sync loop sends it when the controller is back
     return JSONResponse({"language": lang})
 
 
