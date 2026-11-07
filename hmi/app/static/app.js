@@ -233,10 +233,12 @@ function renderStatusBand() {
       service ? t("band.tx_blocked") : (unacked ? t("band.press_ack") : (s.sounders === "silenced" ? t("band.silenced") : (latchedOnly ? t("band.reset_key") : t("band.acked")))), unacked);
     return;
   }
-  const faults = of("FAULT");
+  // a point can be in alarm AND have a line fault (valve opened, then the cable was cut)
+  const faults = items.filter((x) => x.v.kind === "FAULT" || (x.p.runtime && x.p.runtime.fault));
   if (faults.length || lost.length || !s.relays.K3_FAULT_OK) {
     const n = faults.length + lost.length;
-    const what = faults.length ? `${namesOf(faults)}: ${faults[0].v.text}` : t("band.module_missing", { l: lost[0][0], m: lost[0][1] });
+    const what = faults.length ? `${namesOf(faults)}: ${t("fault." + faults[0].p.runtime.fault)}`
+      : lost.length ? t("band.module_missing", { l: lost[0][0], m: lost[0][1] }) : "";
     setBand("fault", "warn", n > 1 ? `${t("band.fault")} (${n})` : t("band.fault"), what, hint);
     return;
   }
@@ -872,13 +874,12 @@ async function refresh() {
     if (!status.key_tech && S.editing) S.editing = false;
     if (!lastStatusOk) toast(t("conn.restored"), "ok");
     lastStatusOk = true;
-    renderTop();
-    renderOverview();
-    renderGraphics();
-    renderPointsTable();
-    renderSim();
-    renderSettings(false);
-    autoShowNewAlarm();
+    // A mistake in one part of the page must not blank the rest, and it is not a lost
+    // connection: it is logged in the browser console instead.
+    for (const draw of [renderTop, renderOverview, renderGraphics, renderPointsTable, renderSim,
+                        () => renderSettings(false), autoShowNewAlarm]) {
+      try { draw(); } catch (e) { console.error("render failed:", draw.name || "settings", e); }
+    }
   } catch (err) {
     $("#led-drift").className = "led";
     buzzerSet(null);
