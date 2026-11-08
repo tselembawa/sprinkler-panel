@@ -31,6 +31,8 @@ echo     7   Εγκατάσταση / ενημέρωση πακέτων Python
 echo     8   Άνοιγμα του φακέλου STM32 (Blink)
 echo     9   Σταμάτημα όλων (προσομοιωτής και HMI)
 echo.
+echo     C   Cockpit του Raspberry Pi (τερματικό, υπηρεσίες, logs στον browser)
+echo.
 echo     0   Έξοδος
 echo.
 if defined MISSING echo   ^>^> Λείπουν πακέτα Python - διάλεξε πρώτα το 7.
@@ -46,6 +48,7 @@ if "%CH%"=="6" goto list_ports
 if "%CH%"=="7" goto install
 if "%CH%"=="8" goto stm32
 if "%CH%"=="9" goto stop_all
+if /i "%CH%"=="C" goto cockpit
 if "%CH%"=="0" goto end
 goto menu
 
@@ -110,6 +113,33 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $
 echo.
 echo   Έτοιμο. Τα παράθυρα μένουν ανοιχτά - μπορείς να τα κλείσεις.
 timeout /t 3 >nul
+goto menu
+
+rem ---- Raspberry Pi: Cockpit in the browser, the address is remembered in pi_address.txt
+:cockpit
+set "PIADDR="
+set "NEWADDR="
+if exist "%ROOT%pi_address.txt" set /p PIADDR=<"%ROOT%pi_address.txt"
+echo.
+echo   Τη διεύθυνση τη βλέπεις στο Pi με την εντολή:  hostname -I
+if defined PIADDR goto cockpit_known
+set /p "NEWADDR=   Διεύθυνση του Pi (π.χ. 192.168.1.57), Enter = πίσω: "
+goto cockpit_check
+:cockpit_known
+set /p "NEWADDR=   Διεύθυνση του Pi [%PIADDR%], Enter = η ίδια: "
+:cockpit_check
+if defined NEWADDR set "PIADDR=%NEWADDR%"
+if not defined PIADDR goto menu
+>"%ROOT%pi_address.txt" echo(%PIADDR%
+echo.
+echo   Ανοίγω https://%PIADDR%:9090
+echo   - Αν ο browser πει "η σύνδεση δεν είναι ιδιωτική": Για προχωρημένους -^> Συνέχεια
+echo     (το πιστοποιητικό το έφτιαξε το ίδιο το Pi).
+echo   - Μπαίνεις με το όνομα χρήστη και τον κωδικό του Pi. Αριστερά: Terminal.
+echo   - Αν δεν ανοίγει καθόλου: στο Pi  sudo apt install -y cockpit
+start "" https://%PIADDR%:9090
+echo.
+pause
 goto menu
 
 rem ---- helpers ------------------------------------------------------------------

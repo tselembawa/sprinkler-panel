@@ -7,3 +7,4 @@ hmi/data/
 *.db-wal
 *.db-shm
 firmware/build/
+pi_address.txt
