@@ -277,6 +277,15 @@ function setOvFilter(k) {
   if (list) list.scrollTop = 0;
 }
 
+// uptime as "12 min", "5 h 3 min", "17 d 4 h", "2 y 41 d"
+function fmtUptime(sec) {
+  const m = Math.floor((sec || 0) / 60), h = Math.floor(m / 60), d = Math.floor(h / 24), y = Math.floor(d / 365);
+  if (h < 1) return t("dur.min", { n: m });
+  if (d < 1) return `${t("dur.h", { n: h })} ${t("dur.min", { n: m % 60 })}`;
+  if (y < 1) return `${t("dur.d", { n: d })} ${t("dur.h", { n: h % 24 })}`;
+  return `${t("dur.y", { n: y })} ${t("dur.d", { n: d % 365 })}`;
+}
+
 function renderOverview() {
   const c = S.status.counts;
   const tiles = [
@@ -341,7 +350,7 @@ function renderOverview() {
   const info = [
     [t("sys.ctrl"), s.firmware], [t("sys.config"), `v${s.config_version} · ${s.config_crc}`],
     [t("sys.synced"), s.config_in_sync ? t("common.yes") : t("common.no")], [t("sys.buzzer"), s.buzzer ? t("common.on") : t("common.off")],
-    [t("sys.last"), `#${s.last_event_seq}`], [t("sys.uptime"), `${Math.floor(s.uptime_s / 60)} min`],
+    [t("sys.last"), `#${s.last_event_seq}`], [t("sys.uptime"), fmtUptime(s.uptime_s)],
     [t("sys.time"), s.time ? fmtTime(s.time) : "–"],
   ];
   if (changed("sysinfo", info)) {

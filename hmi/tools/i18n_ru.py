@@ -269,6 +269,8 @@ RU = {
     "cmd.unsilenced": "Оповещатели снова активны",
     "dur.min": "{n} мин",
     "dur.h": "{n} ч",
+    "dur.d": "{n} дн.",
+    "dur.y": "{n} г.",
     "errc.BAD_DURATION": "Неверная длительность",
     "ev.type.SILENCE": "Оповещатели отключены",
     "ev.type.UNSILENCE": "Оповещатели снова включены",

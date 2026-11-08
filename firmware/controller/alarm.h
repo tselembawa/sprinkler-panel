@@ -151,7 +151,11 @@ typedef struct {
     uint32_t hmi_lost_since_ms;
 
     uint32_t now_ms, started_ms;
-    int64_t time_offset;                    /* Unix time = time_offset + now_ms / 1000 */
+    /* The HAL millisecond counter is 32 bits and starts again from 0 after 49.7 days.
+       mono_ms keeps counting (64 bits): uptime and the clock are taken from it. */
+    uint64_t mono_ms;                       /* ms since alm_init, never wraps */
+    uint32_t mono_raw;                      /* the 32-bit now_ms when mono_ms was last updated */
+    int64_t time_offset;                    /* Unix time = time_offset + mono_ms / 1000 */
 
     uint32_t seq;
     alm_event_t events[ALM_EVENT_BUF];

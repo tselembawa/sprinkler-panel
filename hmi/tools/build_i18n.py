@@ -310,6 +310,8 @@ T = {
     "cmd.unsilenced": ("Larmdon aktiva igen", "Sounders active again", "Sireenit taas käytössä", "Sirener aktive igjen", "Sirener aktive igen", "Οι σειρήνες ενεργοποιήθηκαν ξανά"),
     "dur.min": ("{n} min", "{n} min", "{n} min", "{n} min", "{n} min", "{n} λεπ."),
     "dur.h": ("{n} h", "{n} h", "{n} h", "{n} t", "{n} t", "{n} ώρ."),
+    "dur.d": ("{n} d", "{n} d", "{n} pv", "{n} d", "{n} d", "{n} ημ."),
+    "dur.y": ("{n} år", "{n} y", "{n} v", "{n} år", "{n} år", "{n} έτ."),
     "errc.BAD_DURATION": ("Ogiltig tid", "Invalid duration", "Virheellinen kesto", "Ugyldig varighet", "Ugyldig varighed", "Μη έγκυρη διάρκεια"),
     "ev.type.SILENCE": ("Larmdon tystade", "Sounders silenced", "Sireenit hiljennetty", "Sirener dempet", "Sirener dæmpet", "Σίγηση σειρήνων"),
     "ev.type.UNSILENCE": ("Larmdon återaktiverade", "Sounders re-activated", "Sireenit palautettu", "Sirener aktivert", "Sirener aktiveret", "Επανενεργοποίηση σειρήνων"),

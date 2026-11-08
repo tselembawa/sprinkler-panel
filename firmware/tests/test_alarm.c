@@ -400,6 +400,36 @@ static void test_pending_left_and_condition(void)
     CHECK(alm_pending_left_s(&ctl, 0, now) == 20 && alm_condition(&ctl, 0) == 1);
 }
 
+/* The 32-bit millisecond counter starts again from 0 after 49.7 days: uptime and the
+   clock must go on, and running for 10 years must not break anything. */
+static void test_clock_and_uptime_survive_the_tick_wrap(void)
+{
+    now = 0xFFFF0000u;                         /* ~65 s before the counter wraps */
+    alm_init(&ctl, now, 0, NULL, NULL);
+    alm_sync_time(&ctl, 1800000000u, now);
+    for (int k = 0; k < 2000; k++) {           /* 200 s in 100 ms steps, across the wrap */
+        now += 100u;
+        alm_tick(&ctl, now);
+    }
+    CHECK(now < 0x10000000u);                  /* the counter did wrap */
+    alm_status_t s = status();
+    CHECK(s.uptime_s == 200u);
+    CHECK(s.time == 1800000200u);
+
+    /* ten years in 1-hour steps (the counter wraps ~73 times) */
+    for (uint32_t h = 0; h < 10u * 365u * 24u; h++) {
+        for (int k = 0; k < 36; k++) {
+            now += 100000u;                    /* alm_tick at least every 100 s is plenty */
+            alm_tick(&ctl, now);
+        }
+    }
+    s = status();
+    CHECK(s.uptime_s == 200u + 10u * 365u * 24u * 3600u);
+    CHECK(s.time == 1800000200u + 10u * 365u * 24u * 3600u);
+    /* an older now_ms (taken a moment before the last tick) does not move the clock back */
+    CHECK(alm_time(&ctl, now - 50u) == s.time);
+}
+
 int main(void)
 {
     test_saved_only_when_crc_matches();
@@ -423,6 +453,7 @@ int main(void)
     test_hmi_lost_gives_fault_after_120_minutes();
     test_sync_time_only_once_without_key();
     test_pending_left_and_condition();
+    test_clock_and_uptime_survive_the_tick_wrap();
     printf("%s: %d checks, %d failures (21 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
     return failures ? 1 : 0;
 }

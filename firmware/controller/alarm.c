@@ -34,9 +34,26 @@ static int lost_get(const alm_t *a, uint8_t addr)
     return (a->lost[addr >> 3] >> (addr & 7u)) & 1u;
 }
 
+/* milliseconds since alm_init, across the 49.7-day wrap of the 32-bit tick counter
+   (alm_tick runs every 100 ms, so the 32-bit difference never overflows) */
+static uint64_t mono_now(const alm_t *a, uint32_t now_ms)
+{
+    int32_t d = (int32_t)(now_ms - a->mono_raw);
+    return a->mono_ms + (uint64_t)(d > 0 ? d : 0);   /* an older now_ms counts as "no time passed" */
+}
+
+static void mono_update(alm_t *a, uint32_t now_ms)
+{
+    uint64_t m = mono_now(a, now_ms);
+    if (m != a->mono_ms) {
+        a->mono_ms = m;
+        a->mono_raw = now_ms;
+    }
+}
+
 uint32_t alm_time(const alm_t *a, uint32_t now_ms)
 {
-    return (uint32_t)(a->time_offset + (int64_t)(now_ms / 1000u));
+    return (uint32_t)(a->time_offset + (int64_t)(mono_now(a, now_ms) / 1000u));
 }
 
 static void event(alm_t *a, uint8_t type, uint8_t kind, uint16_t sid,
@@ -220,6 +237,8 @@ void alm_init(alm_t *a, uint32_t now_ms, uint32_t start_seq, alm_event_fn on_eve
     memset(a, 0, sizeof(*a));
     memset(a->inputs, INPUT_UNKNOWN, sizeof(a->inputs));
     a->now_ms = a->started_ms = now_ms;
+    a->mono_ms = 0;
+    a->mono_raw = now_ms;
     a->seq = start_seq;        /* the real controller keeps this in FRAM across restarts */
     a->on_event = on_event;
     a->ctx = ctx;
@@ -441,6 +460,7 @@ int16_t alm_pending_left_s(const alm_t *a, int i, uint32_t now_ms)
 void alm_tick(alm_t *a, uint32_t now_ms)
 {
     a->now_ms = now_ms;
+    mono_update(a, now_ms);
     if (a->service_active && (int32_t)(now_ms - a->service_until_ms) >= 0) {
         a->service_active = 0;
         event(a, EVT_SERVICE_OFF, SRC_SYSTEM, 0, 0, 0, 0);   /* new_v 0 = timeout */
@@ -569,7 +589,7 @@ alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t n
         return ALM_BAD_TIME;
     }
     uint32_t old = alm_time(a, now_ms);
-    a->time_offset = (int64_t)unix_time - (int64_t)(now_ms / 1000u);
+    a->time_offset = (int64_t)unix_time - (int64_t)(mono_now(a, now_ms) / 1000u);
     event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, user);
     return ALM_OK;
 }
@@ -585,7 +605,7 @@ alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms)
     }
     uint32_t old = alm_time(a, now_ms);
     /* events logged before this moment keep their old (1970) time stamps */
-    a->time_offset = (int64_t)unix_time - (int64_t)(now_ms / 1000u);
+    a->time_offset = (int64_t)unix_time - (int64_t)(mono_now(a, now_ms) / 1000u);
     event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, 0);
     return ALM_OK;
 }
@@ -654,7 +674,7 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
     }
     s->key_tech = a->key_tech;
     s->time = alm_time(a, now_ms);
-    s->uptime_s = (now_ms - a->started_ms) / 1000u;
+    s->uptime_s = (uint32_t)(mono_now(a, now_ms) / 1000u);   /* wraps after 136 years */
     s->config_version = a->config_version;
     s->config_crc = a->config_crc;
     s->last_seq = a->seq;
