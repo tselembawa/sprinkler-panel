@@ -20,7 +20,7 @@ echo      SPRINKLER PANEL  -  Μενού δοκιμών (PC)
 echo   ====================================================
 echo.
 echo     1   Προσομοιωτής module  (βρίσκει μόνος τη USB-RS485)
-echo     2   Προσομοιωτής module σε θύρα που διαλέγω
+echo     2   Προσομοιωτής: διαλέγω θύρα και modules (π.χ. 2 3 5)
 echo.
 echo     3   HMI στο PC με τον πραγματικό controller (Nucleo στο USB)
 echo     4   HMI στο PC με τον εικονικό controller (χωρίς hardware)
@@ -56,9 +56,14 @@ goto menu
 :sim_port
 call :ports
 set "PORT="
-set /p "PORT=   Θύρα της USB-RS485 (π.χ. COM7), Enter = πίσω: "
-if not defined PORT goto menu
-start "Module simulator %PORT%" /d "%ROOT%." cmd /k python tools\module_sim\module_sim.py %PORT%
+set /p "PORT=   Θύρα της USB-RS485 (π.χ. COM7), Enter = αυτόματα: "
+if not defined PORT set "PORT=auto"
+set "MODS="
+set /p "MODS=   Διευθύνσεις modules με κενό (π.χ. 2 3 5), Enter = 2: "
+if not defined MODS set "MODS=2"
+set "ARGS="
+for %%m in (%MODS%) do call set "ARGS=%%ARGS%% -a %%m"
+start "Module simulator %MODS%" /d "%ROOT%." cmd /k python tools\module_sim\module_sim.py %PORT% %ARGS%
 goto menu
 
 :hmi_serial
