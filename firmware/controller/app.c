@@ -18,7 +18,7 @@
  *
  * Panel outputs (set up here in app.c, nothing to do in CubeMX - leave these pins unused there):
  *   relays, 5 V relay board with optocouplers, active low, open drain (pins are 5 V tolerant):
- *     PB3  (D3) -> IN1 = K1 A-larm        PB5  (D4) -> IN2 = K2 B-larm
+ *     PB1  (A3) -> IN1 = K1 A-larm        PB5  (D4) -> IN2 = K2 B-larm
  *     PB4  (D5) -> IN3 = K3 Fel (fail-safe: energized while all is OK)
  *     PB14 (D6) -> IN4 = K4 C-larm
  *   LEDs, push-pull, active high, each with a series resistor (~330 ohm) to GND:
@@ -437,8 +437,10 @@ typedef struct {
     uint8_t open_drain;      /* 1: low or released (never drives 3.3 V) */
 } out_pin_t;
 
+/* K1 is NOT on PB3 (D3): on the Nucleo PB3 pulls the relay on for ~0.5 s after every reset,
+ * before and regardless of our code (tested on hardware). K1 goes to SOS/the fire brigade. */
 static const out_pin_t relay_pins[4] = {           /* bit 0..3 = K1..K4 (ALM_K1_A ...) */
-    {GPIOB, GPIO_PIN_3, 1, 1}, {GPIOB, GPIO_PIN_5, 1, 1},
+    {GPIOB, GPIO_PIN_1, 1, 1}, {GPIOB, GPIO_PIN_5, 1, 1},
     {GPIOB, GPIO_PIN_4, 1, 1}, {GPIOB, GPIO_PIN_14, 1, 1},
 };
 static const out_pin_t led_pins[PLED_COUNT] = {     /* order of panel_io.h PLED_* */

@@ -13,7 +13,7 @@
 | 4 | PC5 | D0 | USART1 RX ← XY-485 | CubeMX |
 | 5 | PB8 | D15 | I2C1 SCL → LCD 20×4 | CubeMX |
 | 6 | PB9 | D14 | I2C1 SDA ↔ LCD 20×4 | CubeMX |
-| 7 | PB3 | D3 | Ρελέ K1 A-larm (open-drain, active low) | app.c |
+| 7 | PB1 | A3 | Ρελέ K1 A-larm (open-drain, active low) | app.c |
 | 8 | PB5 | D4 | Ρελέ K2 B-larm | app.c |
 | 9 | PB4 | D5 | Ρελέ K3 Fel (fail-safe) | app.c |
 | 10 | PB14 | D6 | Ρελέ K4 C-larm | app.c |
@@ -41,14 +41,17 @@
 | Θύρα | Pins | Στα headers Arduino |
 | --- | --- | --- |
 | A (6) | PA4, PA9, PA10, PA11, PA12, PA15 | PA4 = A2, PA9 = D8, PA10 = D2 |
-| B (9) | PB1, PB2, PB6, PB7, PB10, PB11, PB12, PB13, PB15 | PB1 = A3, PB11 = A4, PB12 = A5 |
+| B (9) | PB2, PB3, PB6, PB7, PB10, PB11, PB12, PB13, PB15 | PB3 = D3 (βλ. σημείωση), PB11 = A4, PB12 = A5 |
 | C (10) | PC0, PC1, PC2, PC3, PC6, PC8, PC9, PC10, PC11, PC12 | – |
 | D (9) | PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD8, PD9 | – |
 
-Στα headers Arduino μένουν ελεύθερα μόνο **D2, D8, A2, A3, A4, A5**· τα υπόλοιπα είναι στις
+Στα headers Arduino μένουν ελεύθερα μόνο **D2, D3, D8, A2, A4, A5**· τα υπόλοιπα είναι στις
 εξωτερικές διπλές σειρές (morpho CN7/CN10).
 
 Σημειώσεις:
+- **PB3 (D3): όχι για ρελέ ή κάτι κρίσιμο.** Στο Nucleo μας τραβιέται χαμηλά για ~0,5 s μετά από
+  κάθε reset, ανεξάρτητα από το πρόγραμμα (δοκιμή: το ρελέ που κρέμεται εκεί ανάβει). Γι' αυτό το K1 πήγε στο PB1 (A3).
+  Κατάλληλο μόνο για είσοδο ή κάτι αδιάφορο.
 - PA9/PA10 (και PA8): μπορεί να έχουν pull-down μετά από reset (σημείωση 4 του datasheet) – καλύτερα για εξόδους.
 - PA11/PA12 είναι USB D−/D+ αν κάποτε θέλουμε USB στον controller.
 
