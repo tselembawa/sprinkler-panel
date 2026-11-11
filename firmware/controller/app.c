@@ -497,8 +497,8 @@ typedef struct {
     uint8_t open_drain;      /* 1: low or released (never drives 3.3 V) */
 } out_pin_t;
 
-/* K1 is NOT on PB3 (D3): on the Nucleo PB3 pulls the relay on for ~0.5 s after every reset,
- * before and regardless of our code (tested on hardware). K1 goes to SOS/the fire brigade. */
+/* K1 on PB1 (A3) since 2026-11-12 (was PB3/D3; PB3 itself was fine - the K1 pulse after a reset
+ * came from the built-in example configuration, now replaced by the configuration in flash). */
 static const out_pin_t relay_pins[4] = {           /* bit 0..3 = K1..K4 (ALM_K1_A ...) */
     {GPIOB, GPIO_PIN_1, 1, 1}, {GPIOB, GPIO_PIN_5, 1, 1},
     {GPIOB, GPIO_PIN_4, 1, 1}, {GPIOB, GPIO_PIN_14, 1, 1},

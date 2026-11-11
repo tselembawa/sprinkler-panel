@@ -75,7 +75,7 @@ CubeMX: pin **PB8 → I2C1_SCL**, **PB9 → I2C1_SDA**, Connectivity → I2C1 �
 
 | Pin | Arduino | Σύνδεση |
 | --- | --- | --- |
-| PB1 | A3 | IN1 ρελέ = K1 A-larm (όχι D3/PB3: τραβάει το ρελέ ~0,5 s μετά από reset) |
+| PB1 | A3 | IN1 ρελέ = K1 A-larm (πριν: D3/PB3) |
 | PB5 | D4 | IN2 ρελέ = K2 B-larm |
 | PB4 | D5 | IN3 ρελέ = K3 Fel (fail-safe) |
 | PB14 | D6 | IN4 ρελέ = K4 C-larm |
