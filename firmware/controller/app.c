@@ -464,8 +464,14 @@ static void pin_init(const out_pin_t *p)
     HAL_GPIO_Init(p->port, &g);
 }
 
+static uint8_t panel_ready;
+
 static void panel_init(void)
 {
+    if (panel_ready) {
+        return;
+    }
+    panel_ready = 1;
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -531,14 +537,21 @@ static void watchdog_kick(void)
 }
 
 /* ---- main entry points ------------------------------------------------------------------- */
+/* Right after HAL_Init(), before the clock and the other peripherals: from reset until here the
+ * relay pins float; the shorter that is, the less a relay board can do on its own. */
+void app_early_init(void)
+{
+    panel_init();
+}
+
 void app_init(void)
 {
     const uint32_t now = HAL_GetTick();
 
     pi_link_init(&pi, &engine, modules, 0, pi_write, &huart2, now);
+    panel_init();                        /* already done if main.c calls app_early_init() */
     rx_start();
     out("Sprinkler controller fw %u.%u\n", PI_FW_MAJOR, PI_FW_MINOR);
-    panel_init();
     watchdog_start();
 
     alm_init(&engine, now, 0, on_alarm_event, NULL);

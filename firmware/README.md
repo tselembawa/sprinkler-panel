@@ -89,6 +89,13 @@ CubeMX: pin **PB8 → I2C1_SCL**, **PB9 → I2C1_SDA**, Connectivity → I2C1 �
 Ρελέ: board 5 V με οπτοζεύκτες, active low· τα pins είναι open-drain (FT, αντέχουν 5 V).
 LED: 330 Ω σε σειρά, κάθοδος στο GND. Watchdog (IWDG) 2 s.
 
+Στο `main.c`, στο `USER CODE BEGIN Init` (αμέσως μετά το `HAL_Init()`): `app_early_init();`.
+Έτσι τα ρελέ/LED παίρνουν τη θέση «off» μέσα σε λίγα μs μετά από reset, πριν από ρολόι, UART, I2C.
+Όσο το STM32 είναι σε reset (κουμπί πατημένο, watchdog, προγραμματισμός) τα pins «αιωρούνται»:
+γι' αυτό σε κάθε είσοδο IN του board ρελέ μπαίνει **αντίσταση 10 kΩ προς τα 5 V του board**
+(κρατά το ρελέ σίγουρα off). Στην τελική πλακέτα: driver με pull-down στη βάση/gate, ώστε
+«pin χωρίς οδήγηση = ρελέ off».
+
 ## Δοκιμές στο PC
 
 ```bash
