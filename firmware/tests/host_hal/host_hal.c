@@ -11,7 +11,7 @@
 
 #include "app.h"
 
-GPIO_TypeDef host_gpioa, host_gpioc;
+GPIO_TypeDef host_gpioa, host_gpiob, host_gpioc;
 static USART_TypeDef usart1, usart2;
 UART_HandleTypeDef huart1 = {&usart1, -1, -1, HAL_UART_STATE_READY, 0};
 UART_HandleTypeDef huart2 = {&usart2, 0, 1, HAL_UART_STATE_READY, 0};
@@ -67,6 +67,13 @@ int host_uart_flag(UART_HandleTypeDef *h, uint32_t flag)
 {
     (void)h; (void)flag;
     return 0;
+}
+
+/* panel outputs: kept in memory only */
+void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *init) { (void)port; (void)init; }
+void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state)
+{
+    if (state) port->dummy |= pin; else port->dummy &= ~(int)pin;
 }
 
 /* no LCD on the PC: nobody answers on I2C */

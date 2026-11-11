@@ -1,5 +1,5 @@
 /*
- * Controller application, step C3 - see app.h.
+ * Controller application - see app.h.
  *
  * The modules on RS485 line 1 feed the alarm engine; the engine decides alarms, relays,
  * LEDs, buzzer and sounders. The Raspberry Pi (HMI) talks to the controller over the
@@ -15,6 +15,17 @@
  *   PA5     green LED LD4                -> blinks on every poll cycle
  *   PC13    blue button B1               -> Kvittera (like the button on the panel)
  *   I2C1    PB8 (D15, SCL) / PB9 (D14, SDA) -> 20x4 LCD with PCF8574 backpack, 100 kHz
+ *
+ * Panel outputs (set up here in app.c, nothing to do in CubeMX - leave these pins unused there):
+ *   relays, 5 V relay board with optocouplers, active low, open drain (pins are 5 V tolerant):
+ *     PB3  (D3) -> IN1 = K1 A-larm        PB5  (D4) -> IN2 = K2 B-larm
+ *     PB4  (D5) -> IN3 = K3 Fel (fail-safe: energized while all is OK)
+ *     PB14 (D6) -> IN4 = K4 C-larm
+ *   LEDs, push-pull, active high, each with a series resistor (~330 ohm) to GND:
+ *     PC7 (D9) red A    PB0 (D10) yellow B/C    PA7 (D11) yellow fault
+ *     PA6 (D12) green power    PA0 (A0) green Drift    PA1 (A1) yellow service
+ *   PA8 (D7) buzzer, push-pull, active high, through an NPN transistor
+ *   IWDG watchdog 2 s: if the program hangs, the controller restarts and K3 drops
  */
 #include "app.h"
 #include "main.h"
@@ -29,6 +40,7 @@
 #include "lcd_view.h"
 #include "modbus_map.h"
 #include "modbus_rtu.h"
+#include "panel_io.h"
 #include "pi_link.h"
 
 extern UART_HandleTypeDef huart1;   /* RS485 line 1 */
@@ -49,6 +61,7 @@ extern I2C_HandleTypeDef hi2c1;     /* LCD */
 #define LCD_RETRY_MS       5000u    /* no display: look for it again */
 #define LCD_RENDER_MS      250u
 #define LCD_CHARS_PER_PASS 6u       /* a few characters per loop pass, ~0.5 ms each */
+#define WATCHDOG_MS        2000u    /* IWDG: restart if the main loop stops for 2 s */
 
 /* ---- configuration until the Raspberry Pi sends its own --------------------------------- */
 static const alm_point_cfg_t default_config[] = {
@@ -416,6 +429,107 @@ static void lcd_service(void)
     }
 }
 
+/* ---- panel outputs: relays, LEDs, buzzer ----------------------------------------------------- */
+typedef struct {
+    GPIO_TypeDef *port;
+    uint16_t pin;
+    uint8_t active_low;      /* 1: the output is "on" when the pin is low */
+    uint8_t open_drain;      /* 1: low or released (never drives 3.3 V) */
+} out_pin_t;
+
+static const out_pin_t relay_pins[4] = {           /* bit 0..3 = K1..K4 (ALM_K1_A ...) */
+    {GPIOB, GPIO_PIN_3, 1, 1}, {GPIOB, GPIO_PIN_5, 1, 1},
+    {GPIOB, GPIO_PIN_4, 1, 1}, {GPIOB, GPIO_PIN_14, 1, 1},
+};
+static const out_pin_t led_pins[PLED_COUNT] = {     /* order of panel_io.h PLED_* */
+    {GPIOC, GPIO_PIN_7, 0, 0}, {GPIOB, GPIO_PIN_0, 0, 0}, {GPIOA, GPIO_PIN_7, 0, 0},
+    {GPIOA, GPIO_PIN_6, 0, 0}, {GPIOA, GPIO_PIN_0, 0, 0}, {GPIOA, GPIO_PIN_1, 0, 0},
+};
+static const out_pin_t buzzer_pin = {GPIOA, GPIO_PIN_8, 0, 0};
+static panel_out_t panel_now;
+
+static void pin_set(const out_pin_t *p, uint8_t on)
+{
+    HAL_GPIO_WritePin(p->port, p->pin, (on ^ p->active_low) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void pin_init(const out_pin_t *p)
+{
+    GPIO_InitTypeDef g = {0};
+    pin_set(p, 0);                       /* "off" level first, so nothing clicks at start-up */
+    g.Pin = p->pin;
+    g.Mode = p->open_drain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT_PP;
+    g.Pull = GPIO_NOPULL;
+    g.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(p->port, &g);
+}
+
+static void panel_init(void)
+{
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    for (unsigned k = 0; k < 4u; k++) {
+        pin_init(&relay_pins[k]);
+    }
+    for (unsigned k = 0; k < PLED_COUNT; k++) {
+        pin_init(&led_pins[k]);
+    }
+    pin_init(&buzzer_pin);
+}
+
+/* called every loop pass, works every 20 ms: enough for the buzzer rhythm and the flashing LED */
+static void panel_update(void)
+{
+    static uint32_t next;
+    if ((int32_t)(HAL_GetTick() - next) < 0) {
+        return;
+    }
+    next = HAL_GetTick() + 20u;
+    panel_out_t o;
+    panel_outputs(&engine, HAL_GetTick(), &o);
+    for (unsigned k = 0; k < 4u; k++) {
+        pin_set(&relay_pins[k], (uint8_t)((o.relays >> k) & 1u));
+    }
+    for (unsigned k = 0; k < PLED_COUNT; k++) {
+        pin_set(&led_pins[k], o.led[k]);
+    }
+    pin_set(&buzzer_pin, o.buzzer);
+    if (o.pattern != panel_now.pattern) {
+        static const char *const names[] = {"av", "BRAND (snabb)", "B-LARM (langsam)", "FEL (kort pip)"};
+        out("Summer: %s\n", names[o.pattern]);
+    }
+    panel_now = o;
+}
+
+/* ---- watchdog ------------------------------------------------------------------------------- */
+static void watchdog_start(void)
+{
+#ifdef IWDG
+    if (RCC->CSR & RCC_CSR_IWDGRSTF) {
+        out("OBS: omstart av watchdog - programmet hade fastnat\n");
+    }
+    RCC->CSR |= RCC_CSR_RMVF;             /* clear the reset flags for next time */
+    __HAL_RCC_DBGMCU_CLK_ENABLE();
+    DBG->APBFZ1 |= DBG_APB_FZ1_DBG_IWDG_STOP;   /* stopped at a breakpoint: no restart */
+    IWDG->KR = 0xCCCCu;                   /* start (also starts the 32 kHz LSI clock) */
+    IWDG->KR = 0x5555u;                   /* unlock PR and RLR */
+    IWDG->PR = 3u;                        /* /32 -> 1000 counts per second */
+    IWDG->RLR = WATCHDOG_MS - 1u;
+    for (uint32_t n = 0; IWDG->SR != 0u && n < 100000u; n++) {
+        /* wait until the new values are taken */
+    }
+    IWDG->KR = 0xAAAAu;
+#endif
+}
+
+static void watchdog_kick(void)
+{
+#ifdef IWDG
+    IWDG->KR = 0xAAAAu;
+#endif
+}
+
 /* ---- main entry points ------------------------------------------------------------------- */
 void app_init(void)
 {
@@ -423,7 +537,9 @@ void app_init(void)
 
     pi_link_init(&pi, &engine, modules, 0, pi_write, &huart2, now);
     rx_start();
-    out("Sprinkler controller fw %u.%u - steg C3: lank till Raspberry Pi\n", PI_FW_MAJOR, PI_FW_MINOR);
+    out("Sprinkler controller fw %u.%u\n", PI_FW_MAJOR, PI_FW_MINOR);
+    panel_init();
+    watchdog_start();
 
     alm_init(&engine, now, 0, on_alarm_event, NULL);
     alm_cfg_error_t err[4];
@@ -445,6 +561,7 @@ void app_init(void)
 
 void app_loop(void)
 {
+    watchdog_kick();
     service_pi();
 
     if (engine.config_version != modules_for_version) {
@@ -473,6 +590,7 @@ void app_loop(void)
         pi_link_tick(&pi, t);
         show_outputs();
     }
+    panel_update();
     lcd_service();
     check_button();
 }

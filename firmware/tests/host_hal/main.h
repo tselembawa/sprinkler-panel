@@ -17,11 +17,30 @@ typedef enum { HAL_UART_STATE_RESET = 0, HAL_UART_STATE_READY = 0x20, HAL_UART_S
 typedef struct { USART_TypeDef *Instance; int fd_in, fd_out; HAL_UART_StateTypeDef RxState; uint8_t *rx_ptr; } UART_HandleTypeDef;
 typedef struct { int dummy; } GPIO_TypeDef;
 
-extern GPIO_TypeDef host_gpioa, host_gpioc;
+extern GPIO_TypeDef host_gpioa, host_gpiob, host_gpioc;
 #define GPIOA (&host_gpioa)
+#define GPIOB (&host_gpiob)
 #define GPIOC (&host_gpioc)
+#define GPIO_PIN_0  0x0001u
+#define GPIO_PIN_1  0x0002u
+#define GPIO_PIN_3  0x0008u
+#define GPIO_PIN_4  0x0010u
 #define GPIO_PIN_5  0x0020u
+#define GPIO_PIN_6  0x0040u
+#define GPIO_PIN_7  0x0080u
+#define GPIO_PIN_8  0x0100u
 #define GPIO_PIN_13 0x2000u
+#define GPIO_PIN_14 0x4000u
+#define GPIO_MODE_OUTPUT_PP 1u
+#define GPIO_MODE_OUTPUT_OD 2u
+#define GPIO_NOPULL 0u
+#define GPIO_SPEED_FREQ_LOW 0u
+typedef struct { uint32_t Pin, Mode, Pull, Speed, Alternate; } GPIO_InitTypeDef;
+void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *init);
+void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state);
+#define __HAL_RCC_GPIOA_CLK_ENABLE() ((void)0)
+#define __HAL_RCC_GPIOB_CLK_ENABLE() ((void)0)
+#define __HAL_RCC_GPIOC_CLK_ENABLE() ((void)0)
 
 uint32_t HAL_GetTick(void);
 HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *h, const uint8_t *p, uint16_t n, uint32_t timeout);
