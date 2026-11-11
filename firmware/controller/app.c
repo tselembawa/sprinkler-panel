@@ -35,6 +35,7 @@
 #include <string.h>
 
 #include "alarm.h"
+#include "cfg_store.h"
 #include "ctrl_modules.h"
 #include "lcd.h"
 #include "lcd_view.h"
@@ -63,13 +64,72 @@ extern I2C_HandleTypeDef hi2c1;     /* LCD */
 #define LCD_CHARS_PER_PASS 6u       /* a few characters per loop pass, ~0.5 ms each */
 #define WATCHDOG_MS        2000u    /* IWDG: restart if the main loop stops for 2 s */
 
-/* ---- configuration until the Raspberry Pi sends its own --------------------------------- */
-static const alm_point_cfg_t default_config[] = {
-    /* id line mod ch  category  device type        NC  delay en sect  LCD line 1     LCD line 2 */
-    {1,  1,   2,  1,  CAT_B,    DT_SERVICEVENTIL,  1,  0,    1, 1,   "SERVICEVENTIL", "SEKTION 1"},
-    {2,  1,   2,  2,  CAT_A,    DT_PRESSOSTAT,     0,  0,    1, 1,   "PRESSOSTAT",    "SEKTION 1"},
-};
-#define DEFAULT_COUNT ((uint16_t)(sizeof(default_config) / sizeof(default_config[0])))
+/* ---- the configuration is kept in flash ------------------------------------------------------
+ * The last 16 kB of the flash (bank 2 on the G0B1: the program runs from bank 1, so writing
+ * does not stop it). After a reset the controller starts with exactly the configuration it had.
+ * There is no built-in example any more: it did not match the real installation and made
+ * K1 (fire brigade!) pulse for the half second until the Pi sent the real one. */
+#define STORE_SIZE         (16u * 1024u)
+#ifdef FLASH_SR_ERRORS
+#define STORE_CLEAR_ERRORS() (FLASH->SR = FLASH_SR_ERRORS)   /* old error flags would block */
+#else
+#define STORE_CLEAR_ERRORS() ((void)0)
+#endif
+
+static uint32_t store_addr(void)
+{
+    return (uint32_t)(FLASH_BASE + FLASH_SIZE - STORE_SIZE);
+}
+
+static int store_erase(void *ctx, uint32_t offset, uint32_t len)
+{
+    (void)ctx;
+    uint32_t rel = store_addr() + offset - FLASH_BASE;
+    FLASH_EraseInitTypeDef e = {0};
+    uint32_t page_error = 0;
+    e.TypeErase = FLASH_TYPEERASE_PAGES;
+    e.Banks = FLASH_BANK_1;
+#ifdef FLASH_BANK_2
+    if (rel >= FLASH_BANK_SIZE) {        /* pages are numbered from 0 in each bank */
+        e.Banks = FLASH_BANK_2;
+        rel -= FLASH_BANK_SIZE;
+    }
+#endif
+    e.Page = rel / FLASH_PAGE_SIZE;
+    e.NbPages = (len + FLASH_PAGE_SIZE - 1u) / FLASH_PAGE_SIZE;
+    HAL_FLASH_Unlock();
+    STORE_CLEAR_ERRORS();
+    HAL_StatusTypeDef st = HAL_FLASHEx_Erase(&e, &page_error);
+    HAL_FLASH_Lock();
+    return st == HAL_OK ? 0 : -1;
+}
+
+static int store_program(void *ctx, uint32_t offset, const uint8_t *data, uint32_t len)
+{
+    (void)ctx;
+    HAL_StatusTypeDef st = HAL_OK;
+    HAL_FLASH_Unlock();
+    STORE_CLEAR_ERRORS();
+    for (uint32_t i = 0; i < len && st == HAL_OK; i += 8u) {
+        uint64_t v;
+        memcpy(&v, &data[i], sizeof(v));
+        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, store_addr() + offset + i, v);
+    }
+    HAL_FLASH_Lock();
+    return st == HAL_OK ? 0 : -1;
+}
+
+static cfg_store_t store;
+static uint32_t boot_cfg_version;    /* version loaded at start-up: nothing new to save */
+
+static void store_init(void)
+{
+    store.mem = (const uint8_t *)(uintptr_t)store_addr();
+    store.size = STORE_SIZE;
+    store.erase = store_erase;
+    store.program = store_program;
+    store.ctx = NULL;
+}
 
 static alm_t engine;                /* ~40 kB, static */
 static mb_master_t line1;
@@ -557,11 +617,18 @@ void app_init(void)
     watchdog_start();
 
     alm_init(&engine, now, 0, on_alarm_event, NULL);
+    store_init();
+    uint16_t stored_n = 0;
+    const alm_point_cfg_t *stored = cfg_store_load(&store, &stored_n);
     alm_cfg_error_t err[4];
-    uint16_t nerr = alm_load(&engine, default_config, DEFAULT_COUNT, 0, now, err, 4);
-    if (nerr) {
-        out("KONFIGURATIONSFEL: %u fel (punkt %u)\n", nerr, err[0].point_id);
+    if (stored == NULL) {
+        out("INGEN KONFIGURATION i flash: vantar pa Raspberry Pi (K3 Fel)\n");
+    } else if (alm_load(&engine, stored, stored_n, 0, now, err, 4) != 0) {
+        out("KONFIGURATIONSFEL i flash (punkt %u): vantar pa Raspberry Pi\n", err[0].point_id);
+    } else {
+        out("Konfiguration fran flash: %u punkter\n", stored_n);
     }
+    boot_cfg_version = engine.config_version;
     mb_master_init(&line1, rs485_xfer, &huart1, ANSWER_TIMEOUT_MS);
     build_modules();
 
@@ -581,6 +648,13 @@ void app_loop(void)
 
     if (engine.config_version != modules_for_version) {
         build_modules();        /* the Pi activated a new configuration */
+        if (engine.config_version != boot_cfg_version) {
+            watchdog_kick();
+            int r = cfg_store_save(&store, engine.cfg, engine.n);
+            watchdog_kick();
+            out(r == 0 ? "Konfiguration sparad i flash\n" :
+                r == 1 ? "Konfiguration redan i flash\n" : "FEL: kunde inte spara i flash\n");
+        }
     }
 
     /* one module per pass, so the Pi is answered between the (blocking) RS485 transfers */

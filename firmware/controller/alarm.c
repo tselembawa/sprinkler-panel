@@ -384,6 +384,7 @@ uint16_t alm_load(alm_t *a, const alm_point_cfg_t *pts, uint16_t n, uint8_t user
         }
     }
     a->n = n;
+    a->configured = 1;
     a->config_version++;
     a->config_crc = alm_config_crc(pts, n);
     event(a, EVT_CONFIG_ACTIVATED, SRC_SYSTEM, 0, 0, (int32_t)a->config_version, user);
@@ -651,7 +652,8 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
     uint8_t logical = 0;
     if (s->a) logical |= ALM_K1_A;
     if (s->b) logical |= ALM_K2_B;
-    if (s->fault == 0u) logical |= ALM_K3_FAULT_OK;
+    s->no_config = !a->configured;
+    if (s->fault == 0u && a->configured) logical |= ALM_K3_FAULT_OK;
     if (s->c) logical |= ALM_K4_C;
     s->relays_logical = logical;
     s->service_active = a->service_active;
@@ -662,7 +664,7 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
 
     s->led_red_a = s->a > 0u;
     s->led_yellow_b = s->b ? LED_FLASH : (s->c ? LED_STEADY : LED_OFF);
-    s->led_yellow_fault = s->fault > 0u;
+    s->led_yellow_fault = s->fault > 0u || !a->configured;
     s->led_green_drift = s->drift > 0u;
     s->led_green_power = !a->service_active;
     s->led_yellow_service = a->service_active;

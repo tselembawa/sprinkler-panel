@@ -117,8 +117,12 @@ class Bench:
 
 
 @pytest.fixture
-def bench():
+def bench(tmp_path, monkeypatch):
+    # the controller's flash lives in a file: a restart of host_app keeps it, like a reset
+    monkeypatch.setenv("HOST_FLASH", str(tmp_path / "flash.bin"))
     b = Bench(start_seq=100)
+    b.wait_until(lambda: b.ctrl.get_status(), 5)
+    assert b.ctrl.upload_config(POINTS)["ok"]          # a new controller has no configuration
     b.wait_until(lambda: (b.ctrl.get_status(), any("ONLINE" in line for line in b.logs))[1], 5)
     yield b
     b.close()
@@ -276,6 +280,49 @@ def test_hmi_lost_and_back(bench):
     ev = c.get_events(0, 500)
     types = [e["type"] for e in ev]
     assert "HMI_LOST" in types and types.index("HMI_LOST") < len(types) - 1 and types[-1] == "HMI_BACK"
+
+
+def test_new_controller_without_configuration_reports_fault(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOST_FLASH", str(tmp_path / "empty.bin"))
+    b = Bench()
+    try:
+        st = b.wait_until(lambda: b.ctrl.get_status(), 5)
+        assert st["counts"] == {"A": 0, "B": 0, "C": 0, "DRIFT": 0, "FAULT": 0, "DISABLED": 0}
+        assert not st["relays"]["K3_FAULT_OK"] and st["leds"]["yellow_fault"]   # supervises nothing
+        assert not st["relays"]["K1_A"] and b.ctrl.config_info()["points"] == 0
+    finally:
+        b.close()
+
+
+def test_reset_keeps_configuration_and_never_pulses_k1(bench):
+    """A reset of the controller (button, watchdog): it starts with its own configuration from
+    flash, before the Pi says anything. K1 must not move - it goes to the fire brigade."""
+    c, m = bench.ctrl, bench.module
+    time.sleep(0.5)                                     # saved to flash after activation
+    info = c.config_info()
+    m.set_contact(1, ms.IN_CLOSED)                      # pressostat: water -> real A alarm
+    bench.wait_until(lambda: c.get_status()["relays"]["K1_A"])
+    m.set_contact(1, ms.IN_OPEN)
+    c.dev_set_key(True)
+    bench.wait_until(lambda: bench.point(2)["state"] == "LATCHED")
+    c.cmd_reset()
+    assert not c.get_status()["relays"]["K1_A"]
+
+    bench.restart_app()
+    seen = []
+    end = time.time() + 2.5
+    while time.time() < end:
+        try:
+            st = c.get_status()
+            seen.append((st["relays"]["K1_A"], st["counts"]["A"], st["config_crc"]))
+        except ControllerUnavailable:
+            pass
+        time.sleep(0.05)
+    assert seen and not any(k1 or a for k1, a, _ in seen)
+    assert all(crc == info["crc"] for _, _, crc in seen)       # the same configuration at once
+    assert c.config_info()["points"] == 2
+    st = c.get_status()
+    assert st["relays"]["K3_FAULT_OK"] and st["lost_modules"] == []
 
 
 def test_controller_restart_keeps_event_numbering(bench):

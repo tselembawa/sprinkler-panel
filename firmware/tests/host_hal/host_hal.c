@@ -2,7 +2,10 @@
 #define _DEFAULT_SOURCE
 #include "main.h"
 
+#include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <sys/select.h>
 #include <termios.h>
@@ -10,6 +13,56 @@
 #include <unistd.h>
 
 #include "app.h"
+
+/* ---- flash ---------------------------------------------------------------------------- */
+uint32_t host_flash_base;
+static uint8_t *flash_mem;
+static int flash_unlocked;
+
+__attribute__((constructor)) static void host_flash_open(void)
+{
+    const char *path = getenv("HOST_FLASH");
+    int fd = -1, fresh = 1;
+    if (path) {
+        fd = open(path, O_RDWR | O_CREAT, 0644);
+        off_t len = lseek(fd, 0, SEEK_END);
+        fresh = len < (off_t)FLASH_SIZE;
+        if (fresh && ftruncate(fd, FLASH_SIZE) != 0) { perror("HOST_FLASH"); exit(1); }
+    }
+    void *m = mmap(NULL, FLASH_SIZE, PROT_READ | PROT_WRITE,
+                   (fd >= 0 ? MAP_SHARED : MAP_PRIVATE | MAP_ANONYMOUS) | MAP_32BIT, fd, 0);
+    if (m == MAP_FAILED) { perror("flash mmap"); exit(1); }
+    flash_mem = m;
+    host_flash_base = (uint32_t)(uintptr_t)m;
+    if (fresh) memset(flash_mem, 0xFF, FLASH_SIZE);
+}
+
+HAL_StatusTypeDef HAL_FLASH_Unlock(void) { flash_unlocked = 1; return HAL_OK; }
+HAL_StatusTypeDef HAL_FLASH_Lock(void) { flash_unlocked = 0; return HAL_OK; }
+
+HAL_StatusTypeDef HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *e, uint32_t *page_error)
+{
+    *page_error = 0xFFFFFFFFu;
+    if (!flash_unlocked || e->TypeErase != FLASH_TYPEERASE_PAGES) return HAL_ERROR;
+    uint32_t bank0 = e->Banks == FLASH_BANK_2 ? FLASH_BANK_SIZE : 0u;
+    for (uint32_t p = e->Page; p < e->Page + e->NbPages; p++) {
+        if (p >= FLASH_BANK_SIZE / FLASH_PAGE_SIZE) { *page_error = p; return HAL_ERROR; }
+        memset(&flash_mem[bank0 + p * FLASH_PAGE_SIZE], 0xFF, FLASH_PAGE_SIZE);
+    }
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_FLASH_Program(uint32_t type, uint32_t address, uint64_t data)
+{
+    uint32_t off = address - host_flash_base;
+    if (!flash_unlocked || type != FLASH_TYPEPROGRAM_DOUBLEWORD || (off & 7u) || off >= FLASH_SIZE) {
+        return HAL_ERROR;
+    }
+    static const uint8_t erased[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (memcmp(&flash_mem[off], erased, 8) != 0) return HAL_ERROR;   /* like PROGERR */
+    memcpy(&flash_mem[off], &data, 8);
+    return HAL_OK;
+}
 
 GPIO_TypeDef host_gpioa, host_gpiob, host_gpioc;
 static USART_TypeDef usart1, usart2;

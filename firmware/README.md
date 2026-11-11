@@ -13,6 +13,7 @@ controller/   Main Controller (NUCLEO-G0B1RE)
   lcd.c/.h           Οθόνη 20×4 (HD44780 + PCF8574 I2C): στέλνει μόνο ό,τι άλλαξε· ÅÄÖ, ελληνικά, ρωσικά
                      με δικούς μας χαρακτήρες (8 θέσεις, μοιράζονται ανά οθόνη)
   lcd_view.c/.h      Τι δείχνει η οθόνη: ηρεμία (ώρα Σουηδίας) ή συναγερμοί/σφάλματα ένα-ένα
+  cfg_store.c/.h     Η ρύθμιση στο flash του controller: μετά από reset ξεκινά με αυτήν, χωρίς το Pi
   panel_io.c/.h      Έξοδοι του πίνακα: ρελέ K1–K4, 6 LED (με αναβόσβημα), βομβητής με ρυθμό A/B/Fel
   app.c/.h           Modules → συναγερμοί → ρελέ/LED/βομβητής/σειρήνες, σύνδεση με το Pi, LCD, watchdog
 tests/        Δοκιμές στο PC (gcc)
@@ -96,6 +97,20 @@ LED: 330 Ω σε σειρά, κάθοδος στο GND. Watchdog (IWDG) 2 s.
 (κρατά το ρελέ σίγουρα off). Στην τελική πλακέτα: driver με pull-down στη βάση/gate, ώστε
 «pin χωρίς οδήγηση = ρελέ off».
 
+## Η ρύθμιση στο flash (βήμα F1)
+
+Κάθε ρύθμιση που ενεργοποιεί το Pi γράφεται στα **τελευταία 16 kB του flash** (bank 2,
+0x0807C000): μετά από reset, watchdog ή διακοπή ρεύματος ο controller ξεκινά αμέσως με αυτήν.
+Δεν υπάρχει πια ενσωματωμένη «δοκιμαστική» ρύθμιση: δεν ταίριαζε με την πραγματική και για
+μισό δευτερόλεπτο μετά το reset έβγαζε ψεύτικο συναγερμό (K1!) μέχρι να στείλει το Pi τη δική του.
+
+- Καινούριος controller (άδειο flash): καμία ρύθμιση → **K3 Fel + κίτρινο LED Fel** μέχρι να στείλει το Pi.
+- Η ίδια ρύθμιση ξανά: δεν ξαναγράφεται (το flash αντέχει ~10 000 σβησίματα).
+- Στο linker script (`STM32G0B1RETX_FLASH.ld`): `FLASH ... LENGTH = 496K`, ώστε το πρόγραμμα να
+  μη φτάσει ποτέ εκεί. Το CubeIDE σβήνει μόνο τις σελίδες του προγράμματος, άρα η ρύθμιση μένει
+  και μετά από νέο προγραμματισμό.
+- Αρχεία: `cfg_store.c` στο `Core/Src`, `cfg_store.h` στο `Core/Inc` (και τα νέα `alarm.c/.h`, `app.c`).
+
 ## Δοκιμές στο PC
 
 ```bash
@@ -105,11 +120,12 @@ gcc $CF -o /tmp/test_modbus_rtu tests/test_modbus_rtu.c common/modbus_rtu.c && /
 gcc $CF -o /tmp/test_alarm tests/test_alarm.c controller/alarm.c && /tmp/test_alarm
 gcc $CF -o /tmp/test_lcd tests/test_lcd.c controller/lcd.c controller/lcd_view.c controller/alarm.c && /tmp/test_lcd
 gcc $CF -o /tmp/test_panel tests/test_panel.c controller/panel_io.c controller/alarm.c && /tmp/test_panel
+gcc $CF -o /tmp/test_cfg_store tests/test_cfg_store.c controller/cfg_store.c controller/alarm.c && /tmp/test_cfg_store
 gcc $CF -o /tmp/host_ctrl tests/host_ctrl.c common/modbus_rtu.c controller/ctrl_modules.c
 gcc -std=gnu11 -Wall -Wextra -Werror -Itests/host_hal -Icommon -Icontroller -o /tmp/host_app \
     tests/host_hal/host_hal.c controller/app.c controller/alarm.c controller/ctrl_modules.c \
     controller/pi_link.c controller/lcd.c controller/lcd_view.c controller/panel_io.c \
-    common/modbus_rtu.c common/cobs.c
+    controller/cfg_store.c common/modbus_rtu.c common/cobs.c
 cd .. && HOST_CTRL=/tmp/host_ctrl HOST_APP=/tmp/host_app python -m pytest tools/module_sim   # θέλει pyserial
 ```
 

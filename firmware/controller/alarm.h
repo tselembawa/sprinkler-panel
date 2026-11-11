@@ -132,6 +132,7 @@ typedef struct {
     uint32_t last_seq;
     uint16_t lost_modules;
     uint8_t hmi_lost;              /* no contact with the Raspberry Pi */
+    uint8_t no_config;             /* no configuration yet: the panel supervises nothing */
 } alm_status_t;
 
 typedef struct {
@@ -139,6 +140,7 @@ typedef struct {
     alm_point_rt_t rt[ALM_MAX_POINTS];
     uint16_t n;
     uint32_t config_version, config_crc;
+    uint8_t configured;            /* 0 until a configuration was loaded: K3 off (Fel) */
 
     uint8_t inputs[ALM_MAX_ADDR + 1u][4];   /* last MB_IN_* value per module address / input */
     uint8_t lost[(ALM_MAX_ADDR + 8u) / 8u]; /* module lost, bit per address */

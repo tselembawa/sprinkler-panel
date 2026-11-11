@@ -68,4 +68,21 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *h);
 #define __HAL_UART_CLEAR_FLAG(h, f)   ((void)(h), (void)(f))
 #define __HAL_UART_GET_FLAG(h, f)     host_uart_flag((h), (f))
 
+/* flash: 512 kB, two banks of 2 kB pages; mapped below 4 GB so 32-bit addresses work on the PC.
+   HOST_FLASH=<file> keeps it between runs (a controller reset = restart of host_app). */
+extern uint32_t host_flash_base;
+#define FLASH_BASE                    host_flash_base
+#define FLASH_SIZE                    0x80000u
+#define FLASH_BANK_SIZE               (FLASH_SIZE >> 1)
+#define FLASH_PAGE_SIZE               0x800u
+#define FLASH_BANK_1                  1u
+#define FLASH_BANK_2                  2u
+#define FLASH_TYPEERASE_PAGES         0u
+#define FLASH_TYPEPROGRAM_DOUBLEWORD  1u
+typedef struct { uint32_t TypeErase, Banks, Page, NbPages; } FLASH_EraseInitTypeDef;
+HAL_StatusTypeDef HAL_FLASH_Unlock(void);
+HAL_StatusTypeDef HAL_FLASH_Lock(void);
+HAL_StatusTypeDef HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *e, uint32_t *page_error);
+HAL_StatusTypeDef HAL_FLASH_Program(uint32_t type, uint32_t address, uint64_t data);
+
 #endif
