@@ -338,8 +338,10 @@ input[type=search] { min-width: 280px; }
   .topbar { gap: 8px; padding: 8px 8px; flex-wrap: nowrap; }
   .brand { display: none; }
   .indicators { gap: 8px; flex-wrap: nowrap; }
-  .led { font-size: 12.5px; gap: 5px; white-space: nowrap; }
-  .led i { width: 12px; height: 12px; }
+  /* the lamps are what you read from a distance: big on the 7" screen too */
+  .indicators { gap: 14px; }
+  .led { font-size: 18px; font-weight: 600; gap: 7px; white-space: nowrap; }
+  .led i { width: 20px; height: 20px; }
   .actions { gap: 6px; }
   .actions .btn { padding: 0 10px; font-size: 14px; }
   .chip { padding: 5px 9px; font-size: 12px; }
@@ -356,6 +358,13 @@ input[type=search] { min-width: 280px; }
 .led { white-space: nowrap; }
 .actions { flex: none; }
 .actions .btn { white-space: nowrap; flex: none; }
+
+/* 800 px wide screens: no room next to the buttons, lamps as small as before */
+@media (max-width: 860px) {
+  .indicators { gap: 8px; }
+  .led { font-size: 12.5px; font-weight: 400; gap: 5px; }
+  .led i { width: 12px; height: 12px; }
+}
 
 /* ---------- short screens (e.g. 7" 1024x600) ---------- */
 @media (max-height: 720px) {
