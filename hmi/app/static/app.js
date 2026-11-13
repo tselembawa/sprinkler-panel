@@ -841,9 +841,34 @@ $("#btn-reset").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- tabs
+// The blue pill behind the active tab: moved with transform so it glides (CSS does the spring).
+const TABS = document.querySelector(".tabs");
+const PILL = Object.assign(document.createElement("span"), { className: "tab-pill" });
+TABS.prepend(PILL);
+function placePill() {
+  const b = TABS.querySelector("button.active");
+  if (!b || b.hidden || !b.offsetWidth) { PILL.style.width = "0px"; return; }
+  PILL.style.width = `${b.offsetWidth}px`;
+  PILL.style.transform = `translateX(${b.offsetLeft}px)`;
+  if (!TABS.classList.contains("pill-ready")) {
+    requestAnimationFrame(() => requestAnimationFrame(() => TABS.classList.add("pill-ready")));  // no slide at start
+  }
+}
+if ("ResizeObserver" in window) {            // language change, Simulator tab shown, screen rotated
+  const ro = new ResizeObserver(() => placePill());
+  ro.observe(TABS);
+  TABS.querySelectorAll("button").forEach((b) => ro.observe(b));
+} else {
+  window.addEventListener("resize", placePill);
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePill);
+
 function showTab(name) {
   S.tab = name;
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  placePill();
+  const active = TABS.querySelector("button.active");
+  if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${name}`));
   hidePopover();
   if (name === "events") loadEvents();

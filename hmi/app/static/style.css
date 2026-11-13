@@ -107,13 +107,40 @@ body.fire::after {
 body.fire.unacked::after { animation: frame 1s steps(1) infinite; }
 @keyframes frame { 50% { box-shadow: inset 0 0 0 12px #7a0006, inset 0 0 60px 10px #7a000633; } }
 
-/* tabs */
-.tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
-.tabs button {
-  min-height: var(--tap); padding: 0 18px; background: transparent; border: 0; border-bottom: 3px solid transparent;
-  color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+/* tabs: a blue "pill" behind the active tab that glides to the next one (like iOS) */
+.tabs {
+  position: relative; display: flex; gap: 4px; padding: 6px 12px; background: var(--panel);
+  border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none;
 }
-.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button {
+  position: relative; z-index: 1; min-height: var(--tap); padding: 0 20px; background: transparent; border: 0;
+  border-radius: 12px; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: color .25s ease, transform .15s ease;
+}
+.tabs button:active { transform: scale(.95); }
+.tabs button.active { color: #fff; }
+.tabs button:not(.active):hover { color: var(--text); }
+.tab-pill {
+  position: absolute; z-index: 0; left: 0; top: 6px; height: var(--tap); width: 0; border-radius: 12px;
+  background: linear-gradient(180deg, #5aaeff 0%, #2f7cf0 100%);
+  box-shadow: 0 4px 14px rgba(47, 124, 240, .45), inset 0 1px 0 rgba(255, 255, 255, .25);
+  pointer-events: none; opacity: 0;
+}
+.tabs.pill-ready .tab-pill {
+  opacity: 1;
+  /* a soft spring: quick start, a hint of overshoot, gentle stop */
+  transition: transform .45s cubic-bezier(.3, 1.25, .45, 1), width .45s cubic-bezier(.3, 1.25, .45, 1),
+              background .3s ease, box-shadow .3s ease;
+}
+body.fire .tab-pill { background: linear-gradient(180deg, #ff5a5f 0%, #c41a20 100%); box-shadow: 0 4px 14px rgba(196, 26, 32, .5); }
+.tabs button.active svg { stroke: #fff; }
+.view.active { animation: view-in .28s ease-out; }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .tabs.pill-ready .tab-pill, .tabs button { transition: none; }
+  .view.active { animation: none; }
+}
 
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .view { display: none; }
@@ -373,8 +400,9 @@ input[type=search] { min-width: 280px; }
   .sb-title { font-size: 28px; }
   .sb-sub { font-size: 16px; margin-top: 2px; }
   .sb-hint { font-size: 15px; padding: 7px 12px; }
-  .tabs { padding-top: 2px; }
+  .tabs { padding-top: 4px; padding-bottom: 4px; }
   .tabs button { min-height: 44px; }
+  .tab-pill { top: 4px; height: 44px; }
   main { padding: 10px 12px; }
   .toolbar { margin-bottom: 8px; }
   .toolbar .btn, .page-chip { min-height: 40px; }
