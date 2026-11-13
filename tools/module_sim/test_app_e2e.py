@@ -325,6 +325,35 @@ def test_reset_keeps_configuration_and_never_pulses_k1(bench):
     assert st["relays"]["K3_FAULT_OK"] and st["lost_modules"] == []
 
 
+def test_service_and_disabled_points_survive_a_restart(bench):
+    """Decided 2026-11-13: service mode and Frånkopplade points stay over a restart of the
+    controller (flash), until someone changes them."""
+    c, m = bench.ctrl, bench.module
+    c.dev_set_key(True)
+    c.cmd_service(30)
+    c.cmd_disable(1, True)
+    c.dev_set_key(False)
+    time.sleep(0.5)                                     # saved to flash at the next tick
+
+    bench.restart_app()
+    st = bench.wait_until(lambda: c.get_status())
+    assert st["service"]["active"] and 29 * 60 <= st["service"]["remaining_s"] <= 30 * 60
+    assert st["relays"]["K3_FAULT_OK"] and not st["relays"]["K2_B"] and st["counts"]["DISABLED"] == 1
+    assert not bench.point(1)["enabled"]
+    m.set_contact(1, ms.IN_CLOSED)                      # pressostat: real A alarm during service
+    bench.wait_until(lambda: c.get_status()["counts"]["A"] == 1)
+    assert not c.get_status()["relays"]["K1_A"]         # ... is not sent: service
+
+    c.dev_set_key(True)
+    c.cmd_service(0)
+    c.cmd_disable(1, False)
+    time.sleep(0.5)
+    bench.restart_app()
+    st = bench.wait_until(lambda: c.get_status())
+    assert not st["service"]["active"] and st["counts"]["DISABLED"] == 0
+    assert bench.point(1)["enabled"]
+
+
 def test_controller_restart_keeps_event_numbering(bench):
     c = bench.ctrl
     first = c.get_events(0, 500)

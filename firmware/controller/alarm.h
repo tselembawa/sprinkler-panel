@@ -151,6 +151,8 @@ typedef struct {
 
     uint8_t key_tech, silenced, service_active;
     uint32_t service_until_ms;
+    uint32_t service_end_unix;     /* end of service in real time, 0 while the clock is unknown */
+    uint8_t service_restored;      /* came back after a restart: corrected when the clock is known */
     uint8_t hmi_lost;
     uint32_t hmi_lost_since_ms;
 
@@ -206,6 +208,26 @@ alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms);
 
 void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s);
 uint32_t alm_time(const alm_t *a, uint32_t now_ms);
+int alm_clock_valid(const alm_t *a, uint32_t now_ms);
+
+/* What survives a restart of the controller (kept in flash by app.c, decided 2026-11-13):
+   service mode and the "Frånkopplade" points, until someone changes them. */
+typedef struct {
+    uint8_t service_active;
+    uint32_t service_left_s;       /* when it was saved */
+    uint32_t service_end_unix;     /* 0 = the clock was unknown */
+    uint16_t n_disabled;
+    uint16_t disabled[ALM_MAX_POINTS];   /* point ids */
+} alm_persist_t;
+void alm_persist_get(const alm_t *a, uint32_t now_ms, alm_persist_t *p);
+/* After alm_load at start-up. Service comes back with the time it had left; when the clock
+   becomes known (Pi, later RTC) the time the panel was off is taken away - and if it has run out,
+   service ends at once. */
+void alm_persist_restore(alm_t *a, const alm_persist_t *p, uint32_t now_ms);
+/* bytes for the flash (format 1, little endian): ver, service, n, left_s, end_unix, ids */
+#define ALM_PERSIST_MAX (12u + 2u * ALM_MAX_POINTS)
+uint16_t alm_persist_pack(const alm_persist_t *p, uint8_t *buf);
+int alm_persist_unpack(alm_persist_t *p, const uint8_t *buf, uint16_t len);   /* 0 = ok */
 
 /* point access */
 int alm_find(const alm_t *a, uint16_t point_id);              /* index or -1 */

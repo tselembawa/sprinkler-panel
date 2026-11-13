@@ -14,6 +14,7 @@ controller/   Main Controller (NUCLEO-G0B1RE)
                      με δικούς μας χαρακτήρες (8 θέσεις, μοιράζονται ανά οθόνη)
   lcd_view.c/.h      Τι δείχνει η οθόνη: ηρεμία (ώρα Σουηδίας) ή συναγερμοί/σφάλματα ένα-ένα
   cfg_store.c/.h     Η ρύθμιση στο flash του controller: μετά από reset ξεκινά με αυτήν, χωρίς το Pi
+  state_store.c/.h   Service και frånkopplade σημεία στο flash (2 σελίδες σαν «ημερολόγιο»)
   panel_io.c/.h      Έξοδοι του πίνακα: ρελέ K1–K4, 6 LED (με αναβόσβημα), βομβητής με ρυθμό A/B/Fel
   app.c/.h           Modules → συναγερμοί → ρελέ/LED/βομβητής/σειρήνες, σύνδεση με το Pi, LCD, watchdog
 tests/        Δοκιμές στο PC (gcc)
@@ -106,10 +107,23 @@ LED: 330 Ω σε σειρά, κάθοδος στο GND. Watchdog (IWDG) 2 s.
 
 - Καινούριος controller (άδειο flash): καμία ρύθμιση → **K3 Fel + κίτρινο LED Fel** μέχρι να στείλει το Pi.
 - Η ίδια ρύθμιση ξανά: δεν ξαναγράφεται (το flash αντέχει ~10 000 σβησίματα).
-- Στο linker script (`STM32G0B1RETX_FLASH.ld`): `FLASH ... LENGTH = 496K`, ώστε το πρόγραμμα να
-  μη φτάσει ποτέ εκεί. Το CubeIDE σβήνει μόνο τις σελίδες του προγράμματος, άρα η ρύθμιση μένει
+- Στο linker script (`STM32G0B1RETX_FLASH.ld`): `FLASH ... LENGTH = 492K`, ώστε το πρόγραμμα να
+  μη φτάσει ποτέ εκεί (16 kB ρύθμιση + 4 kB service/frånkopplade). Το CubeIDE σβήνει μόνο τις σελίδες του προγράμματος, άρα η ρύθμιση μένει
   και μετά από νέο προγραμματισμό.
 - Αρχεία: `cfg_store.c` στο `Core/Src`, `cfg_store.h` στο `Core/Inc` (και τα νέα `alarm.c/.h`, `app.c`).
+
+## Service και frånkopplade μετά από reset (βήμα F2)
+
+Αποφασίστηκε 2026-11-13: η κατάσταση **service** και τα **frånkopplade σημεία** μένουν μετά από
+reset ή διακοπή ρεύματος, όσο κι αν μείνει σβηστός ο πίνακας, μέχρι να τα αλλάξει κάποιος.
+- Γράφονται σε 2 σελίδες flash ακριβώς κάτω από τη ρύθμιση (0x0807B000), σαν «ημερολόγιο»:
+  όταν αλλάζουν, και όσο το service είναι ενεργό μία φορά το λεπτό (ο χρόνος που απομένει).
+- Μετά το boot το service συνεχίζει με τον χρόνο που είχε (ο controller δεν έχει ρολόι με μπαταρία).
+  Μόλις το Pi δώσει την ώρα, αφαιρείται ο χρόνος που ήταν σβηστός· αν έχει τελειώσει, το service
+  σταματά αμέσως (συμβάν SERVICE_OFF «timeout»).
+- Αν το service ξεκίνησε πριν μάθει ο controller την ώρα, δεν υπάρχει τι να αφαιρεθεί: συνεχίζει
+  με τον χρόνο που είχε.
+- Αργότερα: μπαταρία CR2032 στο VBAT → το RTC του STM32 μετρά και όσο είναι σβηστός.
 
 ## Δοκιμές στο PC
 
@@ -121,11 +135,12 @@ gcc $CF -o /tmp/test_alarm tests/test_alarm.c controller/alarm.c && /tmp/test_al
 gcc $CF -o /tmp/test_lcd tests/test_lcd.c controller/lcd.c controller/lcd_view.c controller/alarm.c && /tmp/test_lcd
 gcc $CF -o /tmp/test_panel tests/test_panel.c controller/panel_io.c controller/alarm.c && /tmp/test_panel
 gcc $CF -o /tmp/test_cfg_store tests/test_cfg_store.c controller/cfg_store.c controller/alarm.c && /tmp/test_cfg_store
+gcc $CF -o /tmp/test_state_store tests/test_state_store.c controller/state_store.c controller/alarm.c && /tmp/test_state_store
 gcc $CF -o /tmp/host_ctrl tests/host_ctrl.c common/modbus_rtu.c controller/ctrl_modules.c
 gcc -std=gnu11 -Wall -Wextra -Werror -Itests/host_hal -Icommon -Icontroller -o /tmp/host_app \
     tests/host_hal/host_hal.c controller/app.c controller/alarm.c controller/ctrl_modules.c \
     controller/pi_link.c controller/lcd.c controller/lcd_view.c controller/panel_io.c \
-    controller/cfg_store.c common/modbus_rtu.c common/cobs.c
+    controller/cfg_store.c controller/state_store.c common/modbus_rtu.c common/cobs.c
 cd .. && HOST_CTRL=/tmp/host_ctrl HOST_APP=/tmp/host_app python -m pytest tools/module_sim   # θέλει pyserial
 ```
 

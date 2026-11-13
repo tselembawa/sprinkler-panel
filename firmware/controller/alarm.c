@@ -573,9 +573,115 @@ alm_result_t alm_service(alm_t *a, uint16_t minutes, uint8_t user, uint32_t now_
     } else {
         a->service_active = 1;
         a->service_until_ms = now_ms + (uint32_t)minutes * 60000u;
+        a->service_end_unix = alm_clock_valid(a, now_ms) ? alm_time(a, now_ms) + (uint32_t)minutes * 60u : 0u;
+        a->service_restored = 0;
         event(a, EVT_SERVICE_ON, SRC_SYSTEM, 0, 0, minutes, user);
     }
     return ALM_OK;
+}
+
+/* The clock has just become known or was changed. */
+static void service_clock_changed(alm_t *a, uint32_t now_ms)
+{
+    if (!a->service_active) {
+        return;
+    }
+    const uint32_t t = alm_time(a, now_ms);
+    if (a->service_restored && a->service_end_unix != 0u) {
+        /* back after a restart: take away the time the panel was off */
+        a->service_restored = 0;
+        if (t >= a->service_end_unix) {
+            a->service_active = 0;
+            event(a, EVT_SERVICE_OFF, SRC_SYSTEM, 0, 0, 0, 0);    /* timeout */
+            return;
+        }
+        a->service_until_ms = now_ms + (a->service_end_unix - t) * 1000u;
+        return;
+    }
+    /* otherwise the remaining time stays, the end gets a real time */
+    a->service_restored = 0;
+    uint32_t left = (int32_t)(a->service_until_ms - now_ms) > 0 ? (a->service_until_ms - now_ms) / 1000u : 0u;
+    a->service_end_unix = t + left;
+}
+
+int alm_clock_valid(const alm_t *a, uint32_t now_ms)
+{
+    return alm_time(a, now_ms) >= 946684800u;      /* after 2000-01-01: set by the Pi or a technician */
+}
+
+void alm_persist_get(const alm_t *a, uint32_t now_ms, alm_persist_t *p)
+{
+    memset(p, 0, sizeof(*p));
+    if (a->service_active && (int32_t)(a->service_until_ms - now_ms) > 0) {
+        p->service_active = 1;
+        p->service_left_s = (a->service_until_ms - now_ms + 999u) / 1000u;
+        p->service_end_unix = a->service_end_unix;
+    }
+    for (uint16_t i = 0; i < a->n; i++) {
+        if (a->rt[i].disabled) {
+            p->disabled[p->n_disabled++] = a->cfg[i].id;
+        }
+    }
+}
+
+uint16_t alm_persist_pack(const alm_persist_t *p, uint8_t *b)
+{
+    b[0] = 1u;
+    b[1] = p->service_active;
+    b[2] = (uint8_t)p->n_disabled; b[3] = (uint8_t)(p->n_disabled >> 8);
+    for (int k = 0; k < 4; k++) {
+        b[4 + k] = (uint8_t)(p->service_left_s >> (8 * k));
+        b[8 + k] = (uint8_t)(p->service_end_unix >> (8 * k));
+    }
+    for (uint16_t i = 0; i < p->n_disabled; i++) {
+        b[12 + 2 * i] = (uint8_t)p->disabled[i];
+        b[13 + 2 * i] = (uint8_t)(p->disabled[i] >> 8);
+    }
+    return (uint16_t)(12u + 2u * p->n_disabled);
+}
+
+int alm_persist_unpack(alm_persist_t *p, const uint8_t *b, uint16_t len)
+{
+    memset(p, 0, sizeof(*p));
+    if (len < 12u || b[0] != 1u) {
+        return -1;
+    }
+    uint16_t n = (uint16_t)(b[2] | (b[3] << 8));
+    if (n > ALM_MAX_POINTS || len != 12u + 2u * n) {
+        return -1;
+    }
+    p->service_active = b[1] ? 1u : 0u;
+    p->n_disabled = n;
+    for (int k = 0; k < 4; k++) {
+        p->service_left_s |= (uint32_t)b[4 + k] << (8 * k);
+        p->service_end_unix |= (uint32_t)b[8 + k] << (8 * k);
+    }
+    for (uint16_t i = 0; i < n; i++) {
+        p->disabled[i] = (uint16_t)(b[12 + 2 * i] | (b[13 + 2 * i] << 8));
+    }
+    return 0;
+}
+
+void alm_persist_restore(alm_t *a, const alm_persist_t *p, uint32_t now_ms)
+{
+    a->now_ms = now_ms;
+    for (uint16_t k = 0; k < p->n_disabled && k < ALM_MAX_POINTS; k++) {
+        int i = alm_find(a, p->disabled[k]);       /* points no longer configured are forgotten */
+        if (i >= 0) {
+            a->rt[i].disabled = 1;
+        }
+    }
+    if (p->service_active && p->service_left_s > 0u) {
+        a->service_active = 1;
+        a->service_until_ms = now_ms + (p->service_left_s > 480u * 60u ? 480u * 60u : p->service_left_s) * 1000u;
+        a->service_end_unix = p->service_end_unix;
+        a->service_restored = 1;
+        event(a, EVT_SERVICE_ON, SRC_SYSTEM, 0, 0, (int32_t)((p->service_left_s + 59u) / 60u), 0);
+        if (alm_clock_valid(a, now_ms)) {
+            service_clock_changed(a, now_ms);      /* a clock that survived (RTC, later) */
+        }
+    }
+    evaluate_all(a);
 }
 
 alm_result_t alm_disable(alm_t *a, uint16_t point_id, int disabled, uint8_t user, uint32_t now_ms)
@@ -606,6 +712,7 @@ alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t n
     uint32_t old = alm_time(a, now_ms);
     a->time_offset = (int64_t)unix_time - (int64_t)(mono_now(a, now_ms) / 1000u);
     event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, user);
+    service_clock_changed(a, now_ms);
     return ALM_OK;
 }
 
@@ -622,6 +729,7 @@ alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms)
     /* events logged before this moment keep their old (1970) time stamps */
     a->time_offset = (int64_t)unix_time - (int64_t)(mono_now(a, now_ms) / 1000u);
     event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, 0);
+    service_clock_changed(a, now_ms);
     return ALM_OK;
 }
 

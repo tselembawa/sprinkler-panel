@@ -36,6 +36,7 @@
 
 #include "alarm.h"
 #include "cfg_store.h"
+#include "state_store.h"
 #include "ctrl_modules.h"
 #include "lcd.h"
 #include "lcd_view.h"
@@ -69,7 +70,7 @@ extern I2C_HandleTypeDef hi2c1;     /* LCD */
  * does not stop it). After a reset the controller starts with exactly the configuration it had.
  * There is no built-in example any more: it did not match the real installation and made
  * K1 (fire brigade!) pulse for the half second until the Pi sent the real one. */
-#define STORE_SIZE         (16u * 1024u)
+#define STORE_SIZE         (16u * 1024u)     /* below it: 2 pages for service/Frånkopplade */
 #ifdef FLASH_SR_ERRORS
 #define STORE_CLEAR_ERRORS() (FLASH->SR = FLASH_SR_ERRORS)   /* old error flags would block */
 #else
@@ -81,10 +82,9 @@ static uint32_t store_addr(void)
     return (uint32_t)(FLASH_BASE + FLASH_SIZE - STORE_SIZE);
 }
 
-static int store_erase(void *ctx, uint32_t offset, uint32_t len)
+static int flash_erase(uint32_t addr, uint32_t len)
 {
-    (void)ctx;
-    uint32_t rel = store_addr() + offset - FLASH_BASE;
+    uint32_t rel = addr - FLASH_BASE;
     FLASH_EraseInitTypeDef e = {0};
     uint32_t page_error = 0;
     e.TypeErase = FLASH_TYPEERASE_PAGES;
@@ -104,23 +104,63 @@ static int store_erase(void *ctx, uint32_t offset, uint32_t len)
     return st == HAL_OK ? 0 : -1;
 }
 
-static int store_program(void *ctx, uint32_t offset, const uint8_t *data, uint32_t len)
+static int flash_program(uint32_t addr, const uint8_t *data, uint32_t len)
 {
-    (void)ctx;
     HAL_StatusTypeDef st = HAL_OK;
     HAL_FLASH_Unlock();
     STORE_CLEAR_ERRORS();
     for (uint32_t i = 0; i < len && st == HAL_OK; i += 8u) {
         uint64_t v;
         memcpy(&v, &data[i], sizeof(v));
-        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, store_addr() + offset + i, v);
+        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + i, v);
     }
     HAL_FLASH_Lock();
     return st == HAL_OK ? 0 : -1;
 }
 
+static int store_erase(void *ctx, uint32_t offset, uint32_t len)
+{
+    (void)ctx;
+    return flash_erase(store_addr() + offset, len);
+}
+
+static int store_program(void *ctx, uint32_t offset, const uint8_t *data, uint32_t len)
+{
+    (void)ctx;
+    return flash_program(store_addr() + offset, data, len);
+}
+
 static cfg_store_t store;
 static uint32_t boot_cfg_version;    /* version loaded at start-up: nothing new to save */
+
+/* ---- service mode and Frånkopplade points survive a restart (decided 2026-11-13) ------------
+ * Two flash pages just below the configuration, used as a log (state_store.c): saved when they
+ * change, and once a minute while service is on (the time left, in case the power goes). */
+#define STATE_PAGES_SIZE   (2u * FLASH_PAGE_SIZE)
+#define STATE_TICK_MS      60000u
+
+static uint32_t state_addr(void)
+{
+    return store_addr() - STATE_PAGES_SIZE;
+}
+
+static int state_erase_page(void *ctx, uint8_t page)
+{
+    (void)ctx;
+    return flash_erase(state_addr() + (uint32_t)page * FLASH_PAGE_SIZE, FLASH_PAGE_SIZE);
+}
+
+static int state_program(void *ctx, uint32_t offset, const uint8_t *data, uint32_t len)
+{
+    (void)ctx;
+    return flash_program(state_addr() + offset, data, len);
+}
+
+static st_flash_t state_flash;
+static state_store_t state;
+static alm_persist_t persist_now, persist_saved;
+static uint8_t persist_bytes[ALM_PERSIST_MAX];
+static uint32_t persist_saved_ms;
 
 static void store_init(void)
 {
@@ -129,6 +169,11 @@ static void store_init(void)
     store.erase = store_erase;
     store.program = store_program;
     store.ctx = NULL;
+    state_flash.mem = (const uint8_t *)(uintptr_t)state_addr();
+    state_flash.page_size = FLASH_PAGE_SIZE;
+    state_flash.erase_page = state_erase_page;
+    state_flash.program = state_program;
+    state_flash.ctx = NULL;
 }
 
 static alm_t engine;                /* ~40 kB, static */
@@ -598,6 +643,53 @@ static void watchdog_kick(void)
 #endif
 }
 
+/* ---- service / Frånkopplade in flash ------------------------------------------------------- */
+static void persist_restore(uint32_t now)
+{
+    int len = state_store_init(&state, &state_flash, persist_bytes, sizeof(persist_bytes));
+    memset(&persist_saved, 0, sizeof(persist_saved));
+    if (len < 0 || alm_persist_unpack(&persist_saved, persist_bytes, (uint16_t)len) != 0) {
+        return;                                  /* nothing saved yet */
+    }
+    if (engine.configured) {
+        alm_persist_restore(&engine, &persist_saved, now);
+        if (persist_saved.service_active) {
+            out("SERVICE aterstallt efter omstart: %lu min kvar%s\n",
+                (unsigned long)((persist_saved.service_left_s + 59u) / 60u),
+                persist_saved.service_end_unix ? " (raknas om nar klockan ar kand)" : "");
+        }
+        if (persist_saved.n_disabled) {
+            out("Frankopplade punkter aterstallda: %u\n", persist_saved.n_disabled);
+        }
+    }
+    persist_saved_ms = now;
+}
+
+/* Save when something changed; while service is on also once a minute (time left). */
+static void persist_service(uint32_t now)
+{
+    alm_persist_get(&engine, now, &persist_now);
+    const alm_persist_t *a = &persist_now, *b = &persist_saved;
+    int changed = a->service_active != b->service_active || a->service_end_unix != b->service_end_unix ||
+                  a->n_disabled != b->n_disabled ||
+                  memcmp(a->disabled, b->disabled, (size_t)a->n_disabled * sizeof(a->disabled[0])) != 0;
+    int due = a->service_active && now - persist_saved_ms >= STATE_TICK_MS;
+    if (!changed && !due) {
+        return;
+    }
+    uint16_t n = alm_persist_pack(a, persist_bytes);
+    watchdog_kick();
+    int r = state_store_save(&state, persist_bytes, n);
+    watchdog_kick();
+    if (r != 0) {
+        out("FEL: kunde inte spara service/frankoppling i flash\n");
+    } else if (changed) {
+        out("Sparat i flash: service %s, %u frankopplade\n", a->service_active ? "PA" : "av", a->n_disabled);
+    }
+    persist_saved = persist_now;            /* also after an error: try again at the next change/minute */
+    persist_saved_ms = now;
+}
+
 /* ---- main entry points ------------------------------------------------------------------- */
 /* Right after HAL_Init(), before the clock and the other peripherals: from reset until here the
  * relay pins float; the shorter that is, the less a relay board can do on its own. */
@@ -629,6 +721,7 @@ void app_init(void)
         out("Konfiguration fran flash: %u punkter\n", stored_n);
     }
     boot_cfg_version = engine.config_version;
+    persist_restore(now);
     mb_master_init(&line1, rs485_xfer, &huart1, ANSWER_TIMEOUT_MS);
     build_modules();
 
@@ -678,6 +771,7 @@ void app_loop(void)
         alm_tick(&engine, t);
         pi_link_tick(&pi, t);
         show_outputs();
+        persist_service(t);
     }
     panel_update();
     lcd_service();
