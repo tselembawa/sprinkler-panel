@@ -25,6 +25,7 @@ class Runtime:
     state: str = "NORMAL"
     acked: bool = True
     fault: str | None = None  # "OPEN", "SHORT", "MODULE_LOST"
+    fault_unacked: bool = False  # line fault not acknowledged (cleared when it goes away)
     pending_since: float | None = None
     changed_at: float = 0.0
 
@@ -81,7 +82,7 @@ class SimController:
         self._lost_modules: set[tuple[int, int]] = set()
         self._events: list[Event] = []
         self._seq = start_seq  # the real controller keeps this in FRAM across restarts
-        self._fault_unacked = False
+        self._lost_unacked: set = set()   # lost modules not acknowledged yet
         self._key_tech = False
         self._disabled: set[int] = set()  # runtime disablement (bortkoppling)
         self._time_offset = 0.0  # simulated RTC: wall clock + offset
@@ -163,9 +164,10 @@ class SimController:
             if lost and key not in self._lost_modules:
                 self._lost_modules.add(key)
                 self._event("MODULE_LOST", "MODULE", sid)
-                self._fault_unacked = True
+                self._lost_unacked.add(key)
             elif not lost and key in self._lost_modules:
                 self._lost_modules.discard(key)
+                self._lost_unacked.discard(key)
                 self._event("MODULE_BACK", "MODULE", sid)
             self._evaluate_all()
 
@@ -204,6 +206,7 @@ class SimController:
         if not self._is_enabled(pid):
             if rt.state != "NORMAL" or rt.fault:
                 rt.state, rt.acked, rt.fault, rt.pending_since = "NORMAL", True, None, None
+                rt.fault_unacked = False
             return
 
         addr = (cfg["line"], cfg["module"], cfg["channel"])
@@ -217,9 +220,12 @@ class SimController:
         else:
             fault = None
         if fault != rt.fault:
+            # the buzzer follows what is there NOW: a fault that went away by itself stays in
+            # the event log but needs no Kvittera (like a B alarm that clears by itself)
+            rt.fault_unacked = False
             if fault in ("OPEN", "SHORT"):
                 self._event("LINE_" + fault, "POINT", pid)
-                self._fault_unacked = True
+                rt.fault_unacked = True
             elif fault is None and rt.fault in ("OPEN", "SHORT"):
                 self._event("LINE_OK", "POINT", pid)
             rt.fault = fault
@@ -278,9 +284,11 @@ class SimController:
                 elif rt.state == "LATCHED" and not rt.acked:
                     rt.acked = True
                     n += 1
-            if self._fault_unacked:
-                self._fault_unacked = False
-                n += 1
+            faults = bool(self._lost_unacked) or any(rt.fault_unacked for rt in self._rt.values())
+            self._lost_unacked.clear()
+            for rt in self._rt.values():
+                rt.fault_unacked = False
+            n += int(faults)
             self._event("ACK", "SYSTEM", 0, user=user)
             return {"acknowledged": n}
 
@@ -360,7 +368,7 @@ class SimController:
         with self._lock:
             a_active = b_unacked = c_active = drift = disabled = 0
             fault_points = 0
-            unacked = self._fault_unacked
+            unacked = bool(self._lost_unacked)
             for pid, cfg in self._cfg.points.items():
                 rt = self._rt.get(pid, Runtime())
                 if not self._is_enabled(pid):
@@ -369,6 +377,8 @@ class SimController:
                 cat = cfg["category"]
                 if rt.fault:
                     fault_points += 1
+                if rt.fault_unacked:
+                    unacked = True
                 in_alarm = rt.state in ALARM_STATES
                 if cat == "A" and in_alarm:
                     a_active += 1

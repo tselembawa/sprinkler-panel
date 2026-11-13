@@ -11,7 +11,9 @@
     python module_sim.py COM5 -a 2 -a 3       # δύο modules
 
 Πλήκτρα όσο τρέχει:
-    1 2 3 4  αλλάζει την είσοδο IN1..IN4: CLOSED -> OPEN -> LINE_OPEN -> LINE_SHORT -> CLOSED
+    1 2 3 4  ανοίγει / κλείνει την επαφή IN1..IN4 (OPEN <-> CLOSED, όπως μια βάνα)
+    Shift + 1 2 3 4  (! @ # $  ή  ! " # ¤ στο σουηδικό πληκτρολόγιο)
+             όλες οι καταστάσεις, με σφάλματα γραμμής: OPEN -> CLOSED -> LINE_SHORT -> LINE_OPEN -> OPEN
     n        επόμενο module (όταν υπάρχουν πολλά)
     r        επανεκκίνηση module (σαν να κόπηκε το ρεύμα του)
     s        σιωπή: το module σταματά να απαντά (δοκιμή «modul saknas») / ξανά
@@ -37,6 +39,9 @@ HW_VERSION = 1
 
 IN_CLOSED, IN_OPEN, IN_LINE_OPEN, IN_LINE_SHORT, IN_NOT_USED, IN_MEASURE_FAULT = range(6)
 IN_NAMES = ["CLOSED", "OPEN", "LINE_OPEN", "LINE_SHORT", "NOT_USED", "MEASURE_FAULT"]
+FAULT_CYCLE = (IN_OPEN, IN_CLOSED, IN_LINE_SHORT, IN_LINE_OPEN)    # Shift + 1..4
+# Shift + 1..4 on US/Greek ("!@#$") and Swedish ("!\"#¤") keyboards
+SHIFT_DIGITS = {"!": 0, "@": 1, '"': 1, "#": 2, "$": 3, "¤": 3}
 IN_OHM = {IN_CLOSED: 1000, IN_OPEN: 2000, IN_LINE_OPEN: 0xFFFF, IN_LINE_SHORT: 0, IN_NOT_USED: 0}
 
 ST_RESTARTED, ST_FAILSAFE, ST_SUPPLY_LOW, ST_SUPPLY_HIGH = 1, 2, 4, 8
@@ -339,8 +344,15 @@ class Module:
             self.in_changes[n] += 1
             self.changes += 1
 
+    def toggle_contact(self, n):
+        """Keys 1-4: open / closed only, like a valve or a pressure switch (no line faults on the way)."""
+        self.set_contact(n, IN_CLOSED if self.contacts[n] != IN_CLOSED else IN_OPEN)
+
     def cycle_contact(self, n):
-        self.set_contact(n, (self.contacts[n] + 1) % 4)
+        """Shift + 1-4: every state, line faults included."""
+        order = FAULT_CYCLE
+        i = order.index(self.contacts[n]) if self.contacts[n] in order else -1
+        self.set_contact(n, order[(i + 1) % len(order)])
 
     def describe(self):
         ins = " ".join(f"IN{n + 1}={IN_NAMES[self.input_value(n)]}" for n in range(4))
@@ -532,7 +544,9 @@ def run(port, addresses, baud=38400, keys=True, modules=None, stop=None):
             if k:
                 m = modules[sel]
                 if k in "1234":
-                    m.cycle_contact(int(k) - 1)
+                    m.toggle_contact(int(k) - 1)
+                elif k in SHIFT_DIGITS:
+                    m.cycle_contact(SHIFT_DIGITS[k])
                 elif k == "n":
                     sel = (sel + 1) % len(modules)
                 elif k == "r":

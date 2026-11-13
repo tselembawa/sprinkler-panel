@@ -157,9 +157,12 @@ static void evaluate(alm_t *a, int i)
         fault = PF_NONE;
     }
     if (fault != rt->fault) {
+        /* the buzzer follows what is there NOW: a fault that went away by itself stays in the
+           event log but needs no Kvittera (like a B alarm that clears by itself) */
+        rt->fault_unacked = 0;
         if (fault == PF_OPEN || fault == PF_SHORT) {
             event(a, fault == PF_OPEN ? EVT_LINE_OPEN : EVT_LINE_SHORT, SRC_POINT, c->id, 0, 0, 0);
-            a->fault_unacked = 1;
+            rt->fault_unacked = 1;
         } else if (fault == PF_NONE && (rt->fault == PF_OPEN || rt->fault == PF_SHORT)) {
             event(a, EVT_LINE_OK, SRC_POINT, c->id, 0, 0, 0);
         }
@@ -417,9 +420,10 @@ void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_
         a->lost_line[addr] = line;
         a->lost_count++;
         event(a, EVT_MODULE_LOST, SRC_MODULE, sid, 0, 0, 0);
-        a->fault_unacked = 1;
+        a->lost_unacked[addr >> 3] |= bit;
     } else if (!lost && lost_get(a, addr)) {
         a->lost[addr >> 3] &= (uint8_t)~bit;
+        a->lost_unacked[addr >> 3] &= (uint8_t)~bit;
         a->lost_count--;
         event(a, EVT_MODULE_BACK, SRC_MODULE, sid, 0, 0, 0);
     }
@@ -485,10 +489,20 @@ uint16_t alm_ack(alm_t *a, uint8_t user, uint32_t now_ms)
             n++;
         }
     }
-    if (a->fault_unacked) {
-        a->fault_unacked = 0;
-        n++;
+    int faults = 0;
+    for (uint16_t i = 0; i < a->n; i++) {
+        if (a->rt[i].fault_unacked) {
+            a->rt[i].fault_unacked = 0;
+            faults = 1;
+        }
     }
+    for (size_t k = 0; k < sizeof(a->lost_unacked); k++) {
+        if (a->lost_unacked[k]) {
+            a->lost_unacked[k] = 0;
+            faults = 1;
+        }
+    }
+    n += (uint16_t)faults;
     event(a, EVT_ACK, SRC_SYSTEM, 0, 0, 0, user);
     return n;
 }
@@ -626,7 +640,10 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
 {
     memset(s, 0, sizeof(*s));
     uint16_t fault_points = 0;
-    int unacked = a->fault_unacked;
+    int unacked = 0;
+    for (size_t k = 0; k < sizeof(a->lost_unacked); k++) {
+        if (a->lost_unacked[k]) unacked = 1;
+    }
     int fire = 0;
     for (uint16_t i = 0; i < a->n; i++) {
         const alm_point_rt_t *rt = &a->rt[i];
@@ -643,6 +660,7 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
         if (cat == CAT_DRIFT && alarm) s->drift++;
         if (cat == CAT_FAULT && alarm) fault_points++;
         if (cat != CAT_DRIFT && alarm && !rt->acked) unacked = 1;
+        if (rt->fault_unacked) unacked = 1;
     }
     s->hmi_lost = a->hmi_lost;
     const int hmi_fault = a->hmi_lost && !a->service_active &&

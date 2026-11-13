@@ -219,6 +219,63 @@ static void test_module_lost_is_a_fault(void)
     CHECK(status().relays & ALM_K3_FAULT_OK);
 }
 
+/* The buzzer follows what is there NOW (decided 2026-11-13): an alarm or fault that went away by
+   itself is in the event log but needs no Kvittera. Only what is still there keeps it sounding. */
+static int has_event(uint8_t type)
+{
+    alm_event_t e[ALM_EVENT_BUF];
+    uint16_t n = alm_events(&ctl, 0, e, ALM_EVENT_BUF);
+    for (uint16_t i = 0; i < n; i++) {
+        if (e[i].type == type) return 1;
+    }
+    return 0;
+}
+
+static void test_buzzer_stops_when_alarm_or_fault_goes_away_by_itself(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_B, DT_SERVICEVENTIL, 0, 0), point(2, CAT_B, DT_SERVICEVENTIL, 0, 0)};
+    load(p, 2);
+    CHECK(!status().buzzer);
+
+    /* B alarm (valve opened and closed again, nobody pressed Kvittera) */
+    set(1, ACTIVE);
+    CHECK(status().buzzer && status().b == 1);
+    set(1, NORMAL);
+    CHECK(!status().buzzer && status().b == 0 && status().c == 0);
+
+    /* the simulator's old key cycle: OPEN -> LINE_OPEN -> LINE_SHORT -> CLOSED */
+    set(1, ACTIVE);
+    set(1, OPEN);
+    alm_set_input(&ctl, 1, 1, 1, MB_IN_LINE_SHORT, now);
+    set(1, NORMAL);
+    alm_status_t s = status();
+    CHECK(!s.buzzer && s.fault == 0 && (s.relays & ALM_K3_FAULT_OK));
+    CHECK(has_event(EVT_LINE_OPEN) && has_event(EVT_LINE_SHORT) && has_event(EVT_LINE_OK));
+
+    /* a fault that stays keeps the buzzer until Kvittera, then it is quiet but still a fault */
+    set(1, OPEN);
+    CHECK(status().buzzer);
+    CHECK(alm_ack(&ctl, 1, now) > 0);
+    s = status();
+    CHECK(!s.buzzer && s.fault == 1);
+
+    /* ... and a second fault that comes and goes does not wake the buzzer for good */
+    set(2, OPEN);
+    CHECK(status().buzzer);
+    set(2, NORMAL);
+    CHECK(!status().buzzer && status().fault == 1);
+
+    /* module lost and back by itself: quiet; lost and staying: sounds until Kvittera */
+    set(1, NORMAL);
+    alm_set_module_lost(&ctl, 1, 1, 1, now);
+    CHECK(status().buzzer);
+    alm_set_module_lost(&ctl, 1, 1, 0, now);
+    CHECK(!status().buzzer && status().fault == 0);
+    alm_set_module_lost(&ctl, 1, 1, 1, now);
+    CHECK(alm_ack(&ctl, 1, now) > 0 && !status().buzzer && status().fault > 0);
+}
+
 static void test_disabled_point_gives_no_alarm(void)
 {
     fresh();
@@ -442,6 +499,7 @@ int main(void)
     test_a_alarm_never_becomes_c();
     test_line_fault_drops_k3_and_keeps_alarm();
     test_module_lost_is_a_fault();
+    test_buzzer_stops_when_alarm_or_fault_goes_away_by_itself();
     test_disabled_point_gives_no_alarm();
     test_events_have_increasing_sequence();
     test_set_time_requires_key_and_is_logged();
@@ -454,6 +512,6 @@ int main(void)
     test_sync_time_only_once_without_key();
     test_pending_left_and_condition();
     test_clock_and_uptime_survive_the_tick_wrap();
-    printf("%s: %d checks, %d failures (21 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
+    printf("%s: %d checks, %d failures (22 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
     return failures ? 1 : 0;
 }

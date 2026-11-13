@@ -158,6 +158,42 @@ def test_module_lost_is_a_fault(ctl):
     assert ctl.get_status()["relays"]["K3_FAULT_OK"]
 
 
+def test_buzzer_stops_when_alarm_or_fault_goes_away_by_itself(ctl):
+    """The buzzer follows what is there NOW (2026-11-13): what went away by itself is in the
+    event log but needs no Kvittera. Mirrors the C test of the same name."""
+    ctl.upload_config([point(1), point(2)])
+    buzz = lambda: ctl.get_status()["buzzer"]
+    ctl.sim_set_input(1, 1, 1, "ACTIVE")
+    assert buzz()
+    ctl.sim_set_input(1, 1, 1, "NORMAL")
+    assert not buzz() and ctl.get_status()["counts"]["C"] == 0
+
+    for cond in ("ACTIVE", "OPEN", "SHORT", "NORMAL"):        # the simulator's old key cycle
+        ctl.sim_set_input(1, 1, 1, cond)
+    st = ctl.get_status()
+    assert not st["buzzer"] and st["counts"]["FAULT"] == 0 and st["relays"]["K3_FAULT_OK"]
+    types = {e["type"] for e in ctl.get_events(0, 100)}
+    assert {"LINE_OPEN", "LINE_SHORT", "LINE_OK"} <= types
+
+    ctl.sim_set_input(1, 1, 1, "OPEN")                         # a fault that stays
+    assert buzz()
+    assert ctl.cmd_ack()["acknowledged"] > 0
+    assert not buzz() and ctl.get_status()["counts"]["FAULT"] == 1
+    ctl.sim_set_input(1, 1, 2, "OPEN")                         # a second one comes and goes
+    assert buzz()
+    ctl.sim_set_input(1, 1, 2, "NORMAL")
+    assert not buzz() and ctl.get_status()["counts"]["FAULT"] == 1
+
+    ctl.sim_set_input(1, 1, 1, "NORMAL")
+    ctl.sim_set_module_lost(1, 1, True)
+    assert buzz()
+    ctl.sim_set_module_lost(1, 1, False)
+    assert not buzz()
+    ctl.sim_set_module_lost(1, 1, True)
+    ctl.cmd_ack()
+    assert not buzz() and ctl.get_status()["counts"]["FAULT"] > 0
+
+
 def test_disabled_point_gives_no_alarm(ctl):
     ctl.upload_config([point(1)])
     ctl.sim_set_key(True)

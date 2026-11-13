@@ -57,6 +57,7 @@ typedef struct {
     uint8_t acked;
     uint8_t fault;          /* alm_fault_t */
     uint8_t disabled;       /* runtime "Frankoppla" (not part of the configuration) */
+    uint8_t fault_unacked;  /* line fault not acknowledged yet (cleared when it goes away) */
     uint32_t pending_since_ms;
     uint32_t changed_ms;
 } alm_point_rt_t;
@@ -144,10 +145,11 @@ typedef struct {
 
     uint8_t inputs[ALM_MAX_ADDR + 1u][4];   /* last MB_IN_* value per module address / input */
     uint8_t lost[(ALM_MAX_ADDR + 8u) / 8u]; /* module lost, bit per address */
+    uint8_t lost_unacked[(ALM_MAX_ADDR + 8u) / 8u]; /* ... and not acknowledged yet */
     uint8_t lost_line[ALM_MAX_ADDR + 1u];
     uint16_t lost_count;
 
-    uint8_t fault_unacked, key_tech, silenced, service_active;
+    uint8_t key_tech, silenced, service_active;
     uint32_t service_until_ms;
     uint8_t hmi_lost;
     uint32_t hmi_lost_since_ms;
