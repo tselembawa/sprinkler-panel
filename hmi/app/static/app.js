@@ -179,7 +179,8 @@ function renderTop() {
   // service mode is never to be overlooked: a ribbon with the time left, whatever else is shown
   const rib = $("#svc-ribbon");
   const svc = s.service && s.service.active;
-  rib.hidden = !svc;
+  // (not twice: when the big band itself is the service message, the ribbon stays away)
+  rib.hidden = !svc || $("#statusband").classList.contains("sb-service");
   if (svc) rib.textContent = t("svc.ribbon", { t: fmtDur(s.service.remaining_s) });
   const sil = $("#btn-silence");
   // The label stays the same (so the button never changes size); the icon and colour show the state.
@@ -212,6 +213,8 @@ const ICONS = {
 function setBand(kind, icon, title, sub, hint = "", unacked = false) {
   const el = $("#statusband");
   el.className = `statusband sb-${kind} ${unacked ? "unacked" : ""}`;
+  if (kind === "service") $("#svc-ribbon").hidden = true;
+  else if (S.status && S.status.service && S.status.service.active) $("#svc-ribbon").hidden = false;
   if ($("#sb-icon").dataset.icon !== icon) { $("#sb-icon").innerHTML = ICONS[icon]; $("#sb-icon").dataset.icon = icon; }
   $("#sb-title").textContent = title;
   $("#sb-sub").textContent = sub;
