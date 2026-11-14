@@ -13,7 +13,8 @@ enum {
     T_TITLE, T_NORMAL, T_SERVICE, T_NO_TIME, T_NO_CONFIG, T_HMI_LOST,
     T_FIRE, T_FAULT, T_B, T_PENDING, T_C, T_DRIFT, T_OFF,
     T_UNACKED, T_ACKED, T_LATCHED, T_OPEN, T_SHORT, T_MODULE_LOST, T_DELAY, T_ACTIVE,
-    T_OUTPUT, T_SUPPLY_LOW, T_OVERCURRENT, T_LAMPTEST, T_COUNT
+    T_OUTPUT, T_SUPPLY_LOW, T_OVERCURRENT, T_LAMPTEST,
+    T_MODULES, T_POINTS, T_DIS_SHORT, T_DISABLED_N, T_COUNT
 };
 
 static const char *const texts[LANG_COUNT][T_COUNT] = {
@@ -22,44 +23,51 @@ static const char *const texts[LANG_COUNT][T_COUNT] = {
                  "BRANDLARM", "FEL", "B-LARM", "FÖRDRÖJNING", "C-LARM", "DRIFT", "FRÅNKOPPLAD",
                  "EJ KVITTERAD", "KVITTERAD", "ÅTERSTÄLL MED NYCKEL", "AVBROTT", "KORTSLUTNING",
                  "MODUL SAKNAS", "LARM OM %ld S", "AKTIV",
-                 "LARMDON UTGÅNG %ld", "LÅG MATNINGSSPÄNNING", "ÖVERSTRÖM", "LAMPTEST"},
+                 "LARMDON UTGÅNG %ld", "LÅG MATNINGSSPÄNNING", "ÖVERSTRÖM", "LAMPTEST",
+                 "MODULER", "PUNKTER", "FRÅNK.", "FRÅNKOPPLADE: %ld"},
     [LANG_EN] = {"SPRINKLER PANEL", "NORMAL OPERATION", "SERVICE %ld MIN LEFT", "TIME NOT SET",
                  "NO CONFIGURATION", "PANEL (HMI) MISSING",
                  "FIRE ALARM", "FAULT", "B ALARM", "DELAY", "C ALARM", "OPERATION", "DISABLED",
                  "NOT ACKNOWLEDGED", "ACKNOWLEDGED", "RESET WITH KEY", "OPEN CIRCUIT", "SHORT CIRCUIT",
                  "MODULE MISSING", "ALARM IN %ld S", "ACTIVE",
-                 "SOUNDER OUTPUT %ld", "LOW SUPPLY VOLTAGE", "OVERCURRENT", "LAMP TEST"},
+                 "SOUNDER OUTPUT %ld", "LOW SUPPLY VOLTAGE", "OVERCURRENT", "LAMP TEST",
+                 "MODULES", "POINTS", "DISABLED", "DISABLED POINTS: %ld"},
     [LANG_FI] = {"SPRINKLERKESKUS", "NORMAALI TILA", "HUOLTO %ld MIN", "AIKAA EI ASETETTU",
                  "EI KONFIGURAATIOTA", "HMI-PANEELI PUUTTUU",
                  "PALOHÄLYTYS", "VIKA", "B-HÄLYTYS", "VIIVE", "C-HÄLYTYS", "KÄYNTI", "POIS KYTKETTY",
                  "KUITTAAMATTA", "KUITATTU", "PALAUTA AVAIMELLA", "KATKOS", "OIKOSULKU",
                  "MODUULI PUUTTUU", "HÄLYTYS %ld S", "AKTIIVINEN",
-                 "HÄLYTINLÄHTÖ %ld", "ALHAINEN SYÖTTÖJÄNN.", "YLIVIRTA", "LAMPPUTESTI"},
+                 "HÄLYTINLÄHTÖ %ld", "ALHAINEN SYÖTTÖJÄNN.", "YLIVIRTA", "LAMPPUTESTI",
+                 "MODUULIT", "PISTEET", "POIS", "POIS KYTKETTY: %ld"},
     [LANG_NO] = {"SPRINKLERSENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN IGJ.", "TID IKKE STILT",
                  "INGEN KONFIGURASJON", "PANEL (HMI) MANGLER",
                  "BRANNALARM", "FEIL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
                  "IKKE KVITTERT", "KVITTERT", "NULLSTILL MED NØKKEL", "BRUDD", "KORTSLUTNING",
                  "MODUL MANGLER", "ALARM OM %ld S", "AKTIV",
-                 "ALARMUTGANG %ld", "LAV FORSYNINGSSPENN.", "OVERSTRØM", "LAMPETEST"},
+                 "ALARMUTGANG %ld", "LAV FORSYNINGSSPENN.", "OVERSTRØM", "LAMPETEST",
+                 "MODULER", "PUNKTER", "FRAK.", "FRAKOBLET: %ld"},
     [LANG_DA] = {"SPRINKLERCENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN", "TID IKKE INDSTILLET",
                  "INGEN KONFIGURATION", "PANEL (HMI) MANGLER",
                  "BRANDALARM", "FEJL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
                  "IKKE KVITTERET", "KVITTERET", "NULSTIL MED NØGLE", "AFBRYDELSE", "KORTSLUTNING",
                  "MODUL MANGLER", "ALARM OM %ld S", "AKTIV",
-                 "ALARMUDGANG %ld", "LAV FORSYNINGSSPÆND.", "OVERSTRØM", "LAMPETEST"},
+                 "ALARMUDGANG %ld", "LAV FORSYNINGSSPÆND.", "OVERSTRØM", "LAMPETEST",
+                 "MODULER", "PUNKTER", "FRAK.", "FRAKOBLET: %ld"},
     [LANG_EL] = {"ΠΙΝΑΚΑΣ SPRINKLER", "ΚΑΝΟΝΙΚΗ ΛΕΙΤΟΥΡΓΙΑ", "SERVICE %ld ΛΕΠΤΑ", "ΔΕΝ ΕΧΕΙ ΟΡΙΣΤΕΙ ΩΡΑ",
                  "ΔΕΝ ΥΠΑΡΧΟΥΝ ΣΗΜΕΙΑ", "HMI ΕΚΤΟΣ ΣΥΝΔΕΣΗΣ",
                  "ΠΥΡΚΑΓΙΑ", "ΣΦΑΛΜΑ", "ΣΥΝΑΓΕΡΜΟΣ B", "ΚΑΘΥΣΤΕΡΗΣΗ", "ΣΥΝΑΓΕΡΜΟΣ C", "ΛΕΙΤΟΥΡΓΙΑ",
                  "ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ", "ΔΕΝ ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ",
                  "ΔΙΑΚΟΠΗ", "ΒΡΑΧΥΚΥΚΛΩΜΑ", "ΑΠΩΛΕΙΑ MODULE", "ΣΥΝΑΓΕΡΜΟΣ ΣΕ %ld S", "ΕΝΕΡΓΟ",
-                 "ΕΞΟΔΟΣ ΣΕΙΡΗΝΑΣ %ld", "ΧΑΜΗΛΗ ΤΑΣΗ", "ΥΠΕΡΕΝΤΑΣΗ", "ΔΟΚΙΜΗ ΛΥΧΝΙΩΝ"},
+                 "ΕΞΟΔΟΣ ΣΕΙΡΗΝΑΣ %ld", "ΧΑΜΗΛΗ ΤΑΣΗ", "ΥΠΕΡΕΝΤΑΣΗ", "ΔΟΚΙΜΗ ΛΥΧΝΙΩΝ",
+                 "MODULES", "ΣΗΜΕΙΑ", "ΑΠΕΝ.", "ΑΠΕΝΕΡΓ. ΣΗΜΕΙΑ: %ld"},
     /* Russian: words chosen so that one screen needs at most 8 letters of our own */
     [LANG_RU] = {"ПУЛЬТ СПРИНКЛЕРА", "НОРМАЛЬНАЯ РАБОТА", "СЕРВИС: %ld МИН", "ВРЕМЯ НЕ УСТАНОВЛЕНО",
                  "НЕТ ТОЧЕК", "НЕТ СВЯЗИ С HMI",
                  "ПОЖАР", "НЕИСПРАВНОСТЬ", "ТРЕВОГА B", "ЗАДЕРЖКА", "ТРЕВОГА C", "РАБОТА", "ОТКЛЮЧЕНО",
                  "НЕ КВИТИРОВАНО", "КВИТИРОВАНО", "СБРОС КЛЮЧОМ", "ОБРЫВ", "КОРОТКОЕ ЗАМЫКАНИЕ",
                  "НЕТ МОДУЛЯ", "ТРЕВОГА ЧЕРЕЗ %ld С", "АКТИВНО",
-                 "ВЫХОД СИРЕНЫ %ld", "НИЗКОЕ НАПРЯЖЕНИЕ", "ПЕРЕГРУЗКА", "ТЕСТ ЛАМП"},
+                 "ВЫХОД СИРЕНЫ %ld", "НИЗКОЕ НАПРЯЖЕНИЕ", "ПЕРЕГРУЗКА", "ТЕСТ ЛАМП",
+                 "МОДУЛИ", "ТОЧКИ", "ОТКЛ.", "ОТКЛЮЧЕНО: %ld"},
 };
 
 /* Greek capitals U+0391..U+03A9: the Latin look-alike, or a letter of our own */
@@ -334,11 +342,50 @@ static void quiet_screen(const alm_t *a, uint8_t lang, uint32_t now_ms, char row
     if (a->n == 0) {
         tx(tmp, sizeof(tmp), lang, T_NO_CONFIG, 0);
         put(rows[3], tmp);
-    } else if (s.hmi_lost) {
+        return;
+    }
+    /* row 4 (decided 2026-11-14): what needs attention first (Frånkopplade, no screen), then
+       modules and points, one after the other every LCD_ROW4_MS */
+    uint8_t lines[4], n = 0;
+    if (s.disabled) lines[n++] = 0;
+    if (s.hmi_lost) lines[n++] = 1;
+    lines[n++] = 2;
+    lines[n++] = 3;
+    char left[80], right[80];
+    switch (lines[(now_ms / LCD_ROW4_MS) % n]) {
+    case 0:
+        tx(tmp, sizeof(tmp), lang, T_DISABLED_N, (long)s.disabled);
+        put(rows[3], tmp);
+        break;
+    case 1:
         tx(tmp, sizeof(tmp), lang, T_HMI_LOST, 0);
         put(rows[3], tmp);
-    } else {
-        rows[3][0] = '\0';
+        break;
+    case 2: {
+        /* modules of the configuration, and how many of them answer */
+        uint16_t total = 0, lost = 0;
+        for (uint16_t i = 0; i < a->n; i++) {
+            uint8_t m = a->cfg[i].module, seen = 0;
+            for (uint16_t j = 0; j < i && !seen; j++) {
+                seen = a->cfg[j].module == m;
+            }
+            if (!seen) {
+                total++;
+                lost += (uint16_t)((a->lost[m >> 3] >> (m & 7u)) & 1u);
+            }
+        }
+        tx(tmp, sizeof(tmp), lang, T_MODULES, 0);
+        snprintf(left, sizeof(left), "%s %u/%u", tmp, (unsigned)(total - lost), (unsigned)total);
+        put_lr(rows[3], left, s.hmi_lost ? "" : "PI OK");
+        break;
+    }
+    default:
+        tx(tmp, sizeof(tmp), lang, T_POINTS, 0);
+        snprintf(left, sizeof(left), "%u %s", (unsigned)a->n, tmp);
+        tx(tmp, sizeof(tmp), lang, T_DIS_SHORT, 0);
+        snprintf(right, sizeof(right), "%u %s", (unsigned)s.disabled, tmp);
+        put_lr(rows[3], left, right);
+        break;
     }
 }
 

@@ -23,6 +23,7 @@
 #include "lcd.h"
 
 #define LCD_VIEW_SWITCH_MS 3000u
+#define LCD_ROW4_MS        4000u   /* quiet screen: row 4 changes every 4 s */
 
 /* languages, same order as the HMI (hmi/tools/build_i18n.py LANGS) */
 typedef enum { LANG_SV = 0, LANG_EN, LANG_FI, LANG_NO, LANG_DA, LANG_EL, LANG_RU, LANG_COUNT } lcd_lang_t;

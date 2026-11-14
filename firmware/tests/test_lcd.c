@@ -217,7 +217,7 @@ static void test_screens(void)
     rows_of(&v, r);
     CHECK_STR(r[1], "DRIFT NORMAL");
     CHECK_STR(r[2], "2026-11-07     23:41");
-    CHECK_STR(r[3], "");
+    CHECK_STR(r[3], "MODULER 1/1    PI OK");      /* row 4: see test_quiet_row4 */
 
     /* serviceventil opens: B alarm */
     alm_set_input(&eng, 1, 2, 1, 1, now);
@@ -449,6 +449,50 @@ static void test_languages_and_greek(void)
     lang = LANG_SV;
 }
 
+/* quiet screen, row 4 (decided 2026-11-14): Frånkopplade and "no screen" first, then
+   modules and points, changing every LCD_ROW4_MS */
+static void test_quiet_row4(void)
+{
+    static const alm_point_cfg_t pts[] = {
+        {1, 1, 2, 1, CAT_B, DT_SERVICEVENTIL, 1, 0, 1, 1, "SERVICEVENTIL", ""},
+        {2, 1, 2, 2, CAT_A, DT_PRESSOSTAT, 0, 0, 1, 1, "PRESSOSTAT", ""},
+        {3, 1, 3, 1, CAT_B, DT_SERVICEVENTIL, 1, 0, 1, 2, "SERVICEVENTIL 2", ""},
+    };
+    lcd_view_t v;
+    char r[4][21];
+    lang = LANG_SV;
+    lcd_view_init(&v);
+    alm_init(&eng, 0, 0, NULL, NULL);
+    CHECK(alm_load(&eng, pts, 3, 0, 0, NULL, 0) == 0);
+    alm_sync_time(&eng, 1794091260u, 0);
+    for (uint8_t m = 2; m <= 3; m++) {
+        for (uint8_t ch = 1; ch <= 2; ch++) {
+            alm_set_input(&eng, 1, m, ch, (m == 2 && ch == 2) ? 1 : 0, 0);   /* all normal */
+        }
+    }
+    now = 0;          rows_of(&v, r); CHECK_STR(r[1], "DRIFT NORMAL"); CHECK_STR(r[3], "MODULER 2/2    PI OK");
+    now = 4000;       rows_of(&v, r); CHECK_STR(r[3], "3 PUNKTER   0 FR\xC5NK.");
+    now = 8000;       rows_of(&v, r); CHECK_STR(r[3], "MODULER 2/2    PI OK");
+    /* no contact with the screen: that comes first in the round
+       (a Frånkopplad point has its own screens, see test_screens) */
+    alm_set_hmi_lost(&eng, 1, 0);
+    now = 0;          rows_of(&v, r); CHECK_STR(r[3], "PANEL (HMI) SAKNAS");
+    now = 4000;       rows_of(&v, r); CHECK_STR(r[3], "MODULER 2/2");
+    now = 8000;       rows_of(&v, r); CHECK_STR(r[3], "3 PUNKTER   0 FR\xC5NK.");
+    /* every language: fits, nothing unknown, at most 8 letters of our own on the screen */
+    for (uint8_t lg = 0; lg < LANG_COUNT; lg++) {
+        lang = lg;
+        for (now = 0; now < 16000u; now += 4000u) {
+            rows_of(&v, r);
+            for (int k = 0; k < 4; k++) CHECK(strlen(r[k]) <= 20 && strchr(r[k], '?') == NULL);
+            CHECK(strlen(r[3]) > 0 && own_letters(r) <= 8);
+            if (own_letters(r) > 8) printf("  lang %u row4 '%s' own=%d\n", lg, r[3], own_letters(r));
+        }
+    }
+    lang = LANG_SV;
+    now = 0;
+}
+
 int main(void)
 {
     test_finds_address_and_writes_rows();
@@ -458,6 +502,7 @@ int main(void)
     test_swedish_time();
     test_screens();
     test_languages_and_greek();
+    test_quiet_row4();
     printf("%s: %d checks, %d failed\n", failures ? "FAILED" : "OK", checks, failures);
     return failures != 0;
 }
