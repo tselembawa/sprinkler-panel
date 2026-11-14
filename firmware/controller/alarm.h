@@ -155,6 +155,7 @@ typedef struct {
     uint8_t service_restored;      /* came back after a restart: corrected when the clock is known */
     uint8_t hmi_lost;
     uint32_t hmi_lost_since_ms;
+    uint8_t hmi_fault;             /* lost for ALM_HMI_FAULT_MS: latched until the HMI is back */
 
     uint32_t now_ms, started_ms;
     /* The HAL millisecond counter is 32 bits and starts again from 0 after 49.7 days.

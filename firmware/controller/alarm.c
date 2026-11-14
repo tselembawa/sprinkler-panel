@@ -139,6 +139,7 @@ static void evaluate(alm_t *a, int i)
         rt->state = PS_NORMAL;
         rt->acked = 1;
         rt->fault = PF_NONE;
+        rt->fault_unacked = 0;      /* else the buzzer would sound for nothing after re-enabling */
         rt->pending_since_ms = 0;
         return;
     }
@@ -444,6 +445,7 @@ void alm_set_hmi_lost(alm_t *a, int lost, uint32_t now_ms)
         event(a, EVT_HMI_LOST, SRC_SYSTEM, 0, 0, 0, 0);
     } else if (!lost && a->hmi_lost) {
         a->hmi_lost = 0;
+        a->hmi_fault = 0;
         event(a, EVT_HMI_BACK, SRC_SYSTEM, 0, 0, 0, 0);
     }
 }
@@ -469,6 +471,10 @@ void alm_tick(alm_t *a, uint32_t now_ms)
     if (a->service_active && (int32_t)(now_ms - a->service_until_ms) >= 0) {
         a->service_active = 0;
         event(a, EVT_SERVICE_OFF, SRC_SYSTEM, 0, 0, 0, 0);   /* new_v 0 = timeout */
+    }
+    /* latched here, so the fault does not vanish when the 32-bit tick wraps (49.7 days) */
+    if (a->hmi_lost && !a->hmi_fault && now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS) {
+        a->hmi_fault = 1;
     }
     evaluate_all(a);
 }
@@ -772,7 +778,7 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
     }
     s->hmi_lost = a->hmi_lost;
     const int hmi_fault = a->hmi_lost && !a->service_active &&
-                          now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS;
+                          (a->hmi_fault || now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS);
     s->fault = (uint16_t)(fault_points + a->lost_count + (hmi_fault ? 1u : 0u));
 
     uint8_t logical = 0;

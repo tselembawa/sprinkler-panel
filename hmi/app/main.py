@@ -184,6 +184,12 @@ def err(code: str, status: int = 400, **extra):
                          "code": code, **extra}, status_code=status)
 
 
+def need_tech():
+    """Changing the installation is for the technician: the key must be in TECHNICIAN position.
+    The screen already asks for it; here the server refuses too (a laptop on the network)."""
+    return None if controller.get_status()["key_tech"] else err("ACCESS_DENIED", 403)
+
+
 def parse_point(body: dict) -> dict:
     def as_int(key, default=None):
         v = body.get(key, default)
@@ -262,6 +268,8 @@ async def api_points(request: Request):
 
 
 async def api_point_save(request: Request):
+    if (denied := need_tech()) is not None:
+        return denied
     try:
         new = parse_point(await request.json())
     except (ValueError, TypeError) as e:
@@ -275,6 +283,8 @@ async def api_point_save(request: Request):
 
 
 async def api_point_delete(request: Request):
+    if (denied := need_tech()) is not None:
+        return denied
     pid = int(request.path_params["pid"])
     points = [p for p in db.points() if p["id"] != pid]
     resp = save_points(points)
@@ -310,7 +320,10 @@ async def api_cmd(request: Request):
 
 
 async def api_events(request: Request):
-    limit = min(int(request.query_params.get("limit", 200)), 5000)
+    try:
+        limit = max(1, min(int(request.query_params.get("limit", 200)), 5000))
+    except ValueError:
+        limit = 200
     text = request.query_params.get("q", "").strip()
     rows = db.events(limit, text)
     lang = language()
@@ -343,6 +356,8 @@ async def api_pages(request: Request):
             pg["markers"] = db.markers(pg["id"])
         return JSONResponse(pages)
 
+    if (denied := need_tech()) is not None:
+        return denied
     form = await request.form()
     name = str(form.get("name", "")).strip() or "Ny bild"
     upload = form.get("file")
@@ -361,6 +376,8 @@ async def api_pages(request: Request):
 
 
 async def api_page_delete(request: Request):
+    if (denied := need_tech()) is not None:
+        return denied
     page = db.page(int(request.path_params["pid"]))
     if not page:
         return err("NOT_FOUND", 404)
@@ -372,6 +389,8 @@ async def api_page_delete(request: Request):
 
 
 async def api_markers(request: Request):
+    if (denied := need_tech()) is not None:
+        return denied
     page_id = int(request.path_params["pid"])
     if not db.page(page_id):
         return err("NOT_FOUND", 404)
@@ -387,6 +406,8 @@ async def api_markers(request: Request):
 
 
 async def api_marker_delete(request: Request):
+    if (denied := need_tech()) is not None:
+        return denied
     db.delete_marker(int(request.path_params["mid"]))
     return JSONResponse({"deleted": True})
 

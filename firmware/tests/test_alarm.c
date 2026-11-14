@@ -276,6 +276,49 @@ static void test_buzzer_stops_when_alarm_or_fault_goes_away_by_itself(void)
     CHECK(alm_ack(&ctl, 1, now) > 0 && !status().buzzer && status().fault > 0);
 }
 
+/* found in the review of 2026-11-14 */
+static void test_disabling_a_point_forgets_its_unacknowledged_fault(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_B, DT_SERVICEVENTIL, 0, 0)};
+    load(p, 1);
+    set(1, OPEN);                                   /* line fault, nobody acknowledges */
+    CHECK(status().buzzer);
+    alm_set_key(&ctl, 1);
+    CHECK(alm_disable(&ctl, 1, 1, 1, now) == ALM_OK);
+    CHECK(!status().buzzer);
+    set(1, NORMAL);                                 /* repaired while disabled */
+    CHECK(alm_disable(&ctl, 1, 0, 1, now) == ALM_OK);
+    CHECK(!status().buzzer && status().fault == 0);  /* was: buzzer on with nothing to show */
+}
+
+static void test_hmi_fault_survives_the_tick_wrap(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_B, DT_SERVICEVENTIL, 0, 0)};
+    load(p, 1);
+    alm_set_hmi_lost(&ctl, 1, now);
+    uint32_t t = now;
+    for (int i = 0; i < 130; i++) {                 /* 130 minutes without the Pi */
+        t += 60000u;
+        alm_tick(&ctl, t);
+    }
+    alm_status_t s;
+    alm_status(&ctl, t, &s);
+    CHECK(s.fault == 1 && !(s.relays & ALM_K3_FAULT_OK));
+    for (int i = 0; i < 1193 * 60 + 10 - 130; i++) {   /* 49.7 days + 7 minutes: the tick wrapped */
+        t += 60000u;
+        alm_tick(&ctl, t);
+    }
+    CHECK(t - (now) < 30u * 60000u);                /* (the plain difference now looks like 7 minutes) */
+    alm_status(&ctl, t, &s);
+    CHECK(s.fault == 1 && !(s.relays & ALM_K3_FAULT_OK));
+    alm_set_hmi_lost(&ctl, 0, t);
+    alm_status(&ctl, t, &s);
+    CHECK(s.fault == 0 && (s.relays & ALM_K3_FAULT_OK));
+    now = t;
+}
+
 static void test_disabled_point_gives_no_alarm(void)
 {
     fresh();
@@ -500,6 +543,8 @@ int main(void)
     test_line_fault_drops_k3_and_keeps_alarm();
     test_module_lost_is_a_fault();
     test_buzzer_stops_when_alarm_or_fault_goes_away_by_itself();
+    test_disabling_a_point_forgets_its_unacknowledged_fault();
+    test_hmi_fault_survives_the_tick_wrap();
     test_disabled_point_gives_no_alarm();
     test_events_have_increasing_sequence();
     test_set_time_requires_key_and_is_logged();

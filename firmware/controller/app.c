@@ -161,6 +161,7 @@ static state_store_t state;
 static alm_persist_t persist_now, persist_saved;
 static uint8_t persist_bytes[ALM_PERSIST_MAX];
 static uint32_t persist_saved_ms;
+static uint8_t persist_pending;      /* saved state waits for a configuration */
 
 static void store_init(void)
 {
@@ -651,16 +652,18 @@ static void persist_restore(uint32_t now)
     if (len < 0 || alm_persist_unpack(&persist_saved, persist_bytes, (uint16_t)len) != 0) {
         return;                                  /* nothing saved yet */
     }
-    if (engine.configured) {
-        alm_persist_restore(&engine, &persist_saved, now);
-        if (persist_saved.service_active) {
-            out("SERVICE aterstallt efter omstart: %lu min kvar%s\n",
-                (unsigned long)((persist_saved.service_left_s + 59u) / 60u),
-                persist_saved.service_end_unix ? " (raknas om nar klockan ar kand)" : "");
-        }
-        if (persist_saved.n_disabled) {
-            out("Frankopplade punkter aterstallda: %u\n", persist_saved.n_disabled);
-        }
+    if (!engine.configured) {
+        persist_pending = 1;                     /* applied when the Pi sends a configuration */
+        return;
+    }
+    alm_persist_restore(&engine, &persist_saved, now);
+    if (persist_saved.service_active) {
+        out("SERVICE aterstallt efter omstart: %lu min kvar%s\n",
+            (unsigned long)((persist_saved.service_left_s + 59u) / 60u),
+            persist_saved.service_end_unix ? " (raknas om nar klockan ar kand)" : "");
+    }
+    if (persist_saved.n_disabled) {
+        out("Frankopplade punkter aterstallda: %u\n", persist_saved.n_disabled);
     }
     persist_saved_ms = now;
 }
@@ -668,6 +671,13 @@ static void persist_restore(uint32_t now)
 /* Save when something changed; while service is on also once a minute (time left). */
 static void persist_service(uint32_t now)
 {
+    if (persist_pending) {
+        if (!engine.configured) {
+            return;
+        }
+        persist_pending = 0;
+        alm_persist_restore(&engine, &persist_saved, now);
+    }
     alm_persist_get(&engine, now, &persist_now);
     const alm_persist_t *a = &persist_now, *b = &persist_saved;
     int changed = a->service_active != b->service_active || a->service_end_unix != b->service_end_unix ||
