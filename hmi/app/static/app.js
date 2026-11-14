@@ -445,7 +445,7 @@ function renderGraphics() {
   if (!pg) return;
 
   const img = $("#page-img");
-  if (img.getAttribute("src") !== pg.url) { img.src = pg.url; img.alt = pg.name; }
+  if (img.getAttribute("src") !== pg.url) { img.src = pg.url; img.alt = pg.name; zoomReset(false); }
 
   const markers = pg.markers.map((m) => {
     const p = S.points.find((x) => x.id === m.point_id);
@@ -489,6 +489,109 @@ function renderGraphics() {
 }
 
 const SPOT_KINDS = new Set(["A", "latched", "B", "C", "FAULT"]);
+
+// ---------------------------------------------------------------- zoom of the picture (Grafik)
+// Pinch with two fingers, drag with one when zoomed, double-tap (or the 1× button) to go back.
+// Only the picture moves: the rest of the panel screen never zooms.
+const Z = { s: 1, x: 0, y: 0, pts: new Map(), start: null, moved: false, lastTap: 0 };
+const ZMAX = 5;
+function zoomApply(anim = false) {
+  const c = $("#canvas"), st = $("#stage");
+  // keep the picture inside the frame
+  const w = c.offsetWidth, h = c.offsetHeight;
+  Z.x = Math.min(0, Math.max(w - w * Z.s, Z.x));
+  Z.y = Math.min(0, Math.max(h - h * Z.s, Z.y));
+  if (Z.s <= 1.001) { Z.s = 1; Z.x = 0; Z.y = 0; }
+  c.classList.toggle("zoom-anim", anim);
+  c.style.transform = Z.s === 1 ? "" : `translate(${Z.x}px, ${Z.y}px) scale(${Z.s})`;
+  c.style.setProperty("--inv", (1 / Z.s).toFixed(4));
+  st.classList.toggle("zoomed", Z.s > 1);
+  $("#zoom-reset").hidden = Z.s === 1;
+  $("#zoom-level").textContent = `${Z.s.toFixed(Z.s < 2 ? 1 : 0).replace(/\.0$/, "")}×`;
+}
+function zoomReset(anim = true) { Z.s = 1; Z.x = 0; Z.y = 0; zoomApply(anim); }
+// zoom by factor k around a point given in screen coordinates
+function zoomAt(k, cx, cy, anim = false) {
+  const r = $("#canvas").getBoundingClientRect();       // already includes the current transform
+  const s2 = Math.min(ZMAX, Math.max(1, Z.s * k));
+  const f = s2 / Z.s;
+  // point under the fingers stays where it is: new offset = p - (p - old offset) * f
+  const px = cx - r.left + Z.x, py = cy - r.top + Z.y;
+  Z.x = px - (px - Z.x) * f;
+  Z.y = py - (py - Z.y) * f;
+  Z.s = s2;
+  zoomApply(anim);
+}
+(() => {
+  const st = $("#stage");
+  const two = () => [...Z.pts.values()];
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  st.addEventListener("pointerdown", (e) => {
+    if ($("#canvas").hidden || S.editing && Z.s === 1 && e.pointerType === "mouse") return;
+    Z.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (Z.pts.size === 1) {
+      Z.moved = false;
+      Z.start = { x: e.clientX, y: e.clientY, ox: Z.x, oy: Z.y };
+    } else if (Z.pts.size === 2) {
+      const [a, b] = two();
+      Z.start = { d: dist(a, b), s: Z.s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      Z.moved = true;
+    }
+  });
+  st.addEventListener("pointermove", (e) => {
+    if (!Z.pts.has(e.pointerId)) return;
+    Z.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (Z.pts.size >= 2 && Z.start && Z.start.d) {
+      const [a, b] = two();
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      // follow the fingers: move with the midpoint, scale around it
+      Z.x += mx - Z.start.mx; Z.y += my - Z.start.my;
+      Z.start.mx = mx; Z.start.my = my;
+      zoomAt((Z.start.s * dist(a, b) / Z.start.d) / Z.s, mx, my);
+    } else if (Z.pts.size === 1 && Z.start && Z.s > 1) {
+      const dx = e.clientX - Z.start.x, dy = e.clientY - Z.start.y;
+      if (Math.hypot(dx, dy) > 6) { Z.moved = true; st.classList.add("dragging"); }
+      if (Z.moved) { Z.x = Z.start.ox + dx; Z.y = Z.start.oy + dy; zoomApply(); }
+    }
+  });
+  const up = (e) => {
+    if (!Z.pts.delete(e.pointerId)) return;
+    st.classList.remove("dragging");
+    if (Z.pts.size === 1) {                    // one finger left after a pinch: go on dragging
+      const [a] = two();
+      Z.start = { x: a.x, y: a.y, ox: Z.x, oy: Z.y };
+    } else if (Z.pts.size === 0) {
+      if (!Z.moved && e.type === "pointerup" && e.pointerType !== "mouse") {
+        const now = Date.now();
+        if (now - Z.lastTap < 320) {           // double tap: zoom in there, or back to 1×
+          Z.lastTap = 0;
+          if (Z.s > 1) zoomReset(); else zoomAt(2.5, e.clientX, e.clientY, true);
+          return;
+        }
+        Z.lastTap = now;
+      }
+      Z.start = null;
+    }
+  };
+  st.addEventListener("pointerup", up);
+  st.addEventListener("pointercancel", up);
+  // a drag or pinch is not a click on the picture or a marker
+  st.addEventListener("click", (e) => { if (Z.moved) { e.stopPropagation(); e.preventDefault(); Z.moved = false; } }, true);
+  st.addEventListener("dblclick", (e) => {   // mouse: double click
+    if (S.editing || $("#canvas").hidden) return;
+    if (Z.s > 1) zoomReset(); else zoomAt(2.5, e.clientX, e.clientY, true);
+  });
+  st.addEventListener("wheel", (e) => {      // mouse wheel / touchpad pinch (ctrl+wheel)
+    if ($("#canvas").hidden) return;
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX, e.clientY);
+  }, { passive: false });
+  $("#zoom-reset").addEventListener("click", (e) => { e.stopPropagation(); zoomReset(); });
+  window.addEventListener("resize", () => zoomApply());
+})();
+// the rest of the screen never zooms (kiosk: Chromium may still try with ctrl+wheel or gestures)
+document.addEventListener("wheel", (e) => { if (e.ctrlKey && !e.target.closest("#stage")) e.preventDefault(); }, { passive: false });
+["gesturestart", "gesturechange"].forEach((n) => document.addEventListener(n, (e) => e.preventDefault()));
 
 // Choose a side for each tag so neighbouring tags do not cover each other.
 // Positions are fractions of the image; a tag is roughly 22% wide and 9% tall.

@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Sprinklercentral</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%23ff4b4b%27/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
@@ -109,6 +109,10 @@
           <div class="spot" id="spot"></div>
           <div class="markers" id="markers"></div>
         </div>
+        <button class="zoom-reset" id="zoom-reset" type="button" hidden aria-label="1:1">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4.2-4.2"/></svg>
+          <span id="zoom-level">1×</span>
+        </button>
       </div>
     </section>
 

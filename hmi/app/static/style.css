@@ -17,6 +17,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* the panel screen never zooms as a whole: pinch only zooms the picture in Grafik */
+html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -215,8 +217,19 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .page-chip .dot.b { background: var(--amber); }
 .page-chip .dot.f { background: var(--orange); }
 .edit-hint { background: #12263a; border: 1px solid #1f4a72; color: #b9dcff; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.stage { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; min-height: 300px; display: flex; align-items: center; justify-content: center; }
-.canvas { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+.stage { position: relative; overflow: hidden; touch-action: none; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+.canvas { position: relative; display: inline-block; max-width: 100%; line-height: 0; transform-origin: 0 0; will-change: transform; --inv: 1; }
+.canvas.zoom-anim { transition: transform .25s cubic-bezier(.2, .8, .3, 1); }
+.stage.zoomed { cursor: grab; }
+.stage.zoomed.dragging { cursor: grabbing; }
+/* markers keep their size while the picture is zoomed */
+.canvas .mk { transform: scale(var(--inv)); transform-origin: 0 0; }
+.zoom-reset {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #ffffff40; background: #0d1117d9;
+  color: #fff; font: 600 15px/1 inherit; font-family: inherit; cursor: pointer; backdrop-filter: blur(6px);
+}
+.zoom-reset:active { transform: scale(.95); }
 .canvas img { max-width: 100%; max-height: calc(100vh - 230px); border-radius: 6px; user-select: none; -webkit-user-drag: none; }
 .canvas.editing { cursor: crosshair; }
 .markers { position: absolute; inset: 0; pointer-events: none; }
@@ -265,7 +278,7 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .mk-tag.edit b { font-size: 12px; font-weight: 600; }
 
 .spot {
-  position: absolute; inset: 0; border-radius: 6px; background: rgba(0, 0, 0, .62);
+  position: absolute; inset: 0; border-radius: 6px; background: rgba(0, 0, 0, .14);   /* only a hint: the photo stays readable */
   pointer-events: none; opacity: 0; transition: opacity .4s;
   -webkit-mask-composite: source-in; mask-composite: intersect;
 }
