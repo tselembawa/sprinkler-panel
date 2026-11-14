@@ -134,7 +134,7 @@ def sounders_on(m):
 
 def test_status_time_sync_and_log(bench):
     st = bench.ctrl.get_status()
-    assert st["firmware"] == "0.5" and st["protocol"] == 1
+    assert st["firmware"] == "0.6" and st["protocol"] == 1
     assert st["relays"]["K3_FAULT_OK"] and not st["relays"]["K1_A"]
     assert abs(st["time"] - time.time()) < 5          # the Pi set the controller clock
     assert st["leds"]["green_power"] and not st["hmi_lost"]
@@ -352,6 +352,44 @@ def test_service_and_disabled_points_survive_a_restart(bench):
     st = bench.wait_until(lambda: c.get_status())
     assert not st["service"]["active"] and st["counts"]["DISABLED"] == 0
     assert bench.point(1)["enabled"]
+
+
+def test_sounder_line_and_low_supply_are_panel_faults(bench):
+    """Decided 2026-11-14: what the module reports about itself reaches the panel."""
+    c, m = bench.ctrl, bench.module
+    assert c.get_status()["module_faults"] == []
+    m.out_line[0] = 1                                   # sounder cable cut (OUT1 of L1-M02)
+    st = bench.wait_until(lambda: (lambda s: s if s["module_faults"] else None)(c.get_status()))
+    assert st["module_faults"] == [{"line": 1, "module": 2, "what": "OUT1", "kind": "OPEN"}]
+    assert st["counts"]["FAULT"] == 1 and not st["relays"]["K3_FAULT_OK"] and st["buzzer"]
+    assert "OUTPUT_FAULT" in [e["type"] for e in c.get_events(100, 50)]
+    m.supply_mv = 13000
+    st = bench.wait_until(lambda: (lambda s: s if len(s["module_faults"]) == 2 else None)(c.get_status()), 10)
+    assert {"line": 1, "module": 2, "what": "SUPPLY", "kind": ""} in st["module_faults"]
+    m.out_line[0] = 0
+    m.supply_mv = 24000
+    st = bench.wait_until(lambda: (lambda s: s if not s["module_faults"] else None)(c.get_status()), 10)
+    assert st["relays"]["K3_FAULT_OK"] and not st["buzzer"]
+
+
+def test_lamptest_and_who_did_it(bench):
+    c = bench.ctrl
+    c.cmd_lamptest(user=2)
+    assert c.get_status()["lamptest"]
+    c.cmd_ack(user=3)
+    ev = c.get_events(100, 50)
+    assert [e["user"] for e in ev if e["type"] == "LAMPTEST"] == [2]
+    assert [e["user"] for e in ev if e["type"] == "ACK"][-1] == 3
+    bench.wait_until(lambda: not c.get_status()["lamptest"], 6)
+
+
+def test_pi_corrects_a_wrong_controller_clock(bench):
+    c = bench.ctrl
+    t = c.get_status()["time"]
+    assert abs(t - time.time()) < 5
+    c._req(L.SET_TIME, struct.pack("<IBB", int(time.time()) - 7200, 0, 1))     # as if the Pi had been wrong
+    c._cache = None
+    assert abs(c.get_status()["time"] - time.time()) < 5                        # put right at the next status
 
 
 def test_controller_restart_keeps_event_numbering(bench):

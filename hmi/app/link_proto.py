@@ -31,6 +31,7 @@ CMD_SILENCE = 0x21
 CMD_RESET = 0x22
 CMD_DISABLE = 0x23
 CMD_SERVICE = 0x25
+CMD_LAMPTEST = 0x26
 SET_TIME = 0x30
 SET_LANGUAGE = 0x31
 DEV_SET_KEY = 0x40
@@ -62,7 +63,10 @@ EVENT_TYPES = (
     "LINE_OPEN", "LINE_SHORT", "LINE_OK", "MODULE_LOST", "MODULE_BACK", "ACK", "RESET", "SILENCE",
     "UNSILENCE", "RESOUND", "SERVICE_ON", "SERVICE_OFF", "POINT_DISABLED", "POINT_ENABLED",
     "TIME_SET", "HMI_LOST", "HMI_BACK",
+    "OUTPUT_FAULT", "OUTPUT_OK", "SUPPLY_LOW", "SUPPLY_OK", "LAMPTEST",
 )
+OUTPUT_FAULT_KINDS = ("", "OPEN", "SHORT", "OVERCURRENT")   # ALM_OF_*
+MODFAULT_REC = 4
 SOURCE_KINDS = ("SYSTEM", "POINT", "MODULE")
 FAULTS = (None, "OPEN", "SHORT", "MODULE_LOST")
 MODULE_STATES = ("START", "RUN", "LOST", "REJECTED")
@@ -168,6 +172,21 @@ def parse_status(p: bytes) -> dict:
         return {"K1_A": bool(bits & 1), "K2_B": bool(bits & 2),
                 "K3_FAULT_OK": bool(bits & 4), "K4_C": bool(bits & 8)}
 
+    # after the lost modules: faults the modules report about themselves (firmware 0.6+)
+    module_faults = []
+    o = STATUS_LEN + 2 * nlost
+    if o < len(p):
+        for i in range(p[o]):
+            r = o + 1 + MODFAULT_REC * i
+            if r + MODFAULT_REC > len(p):
+                break
+            line, addr, what, kind = p[r:r + MODFAULT_REC]
+            module_faults.append({
+                "line": line, "module": addr,
+                "what": f"OUT{what}" if 1 <= what <= 4 else "SUPPLY",
+                "kind": OUTPUT_FAULT_KINDS[kind] if kind < len(OUTPUT_FAULT_KINDS) and what <= 4 else "",
+            })
+
     service = bool(f1 & 0x04)
     return {
         "counts": {"A": a, "B": b, "C": c, "DRIFT": drift, "FAULT": fault, "DISABLED": disabled},
@@ -188,6 +207,8 @@ def parse_status(p: bytes) -> dict:
         "service": {"active": service, "remaining_s": svc_left if service else 0},
         "key_tech": bool(f1 & 0x08),
         "hmi_lost": bool(f2 & 0x04),
+        "lamptest": bool(f2 & 0x08),
+        "module_faults": module_faults,
         "language": LANGS[(f2 >> 4) & 7] if ((f2 >> 4) & 7) < len(LANGS) else "sv",
         "time": ctime,
         "uptime_s": uptime,
@@ -223,6 +244,12 @@ def _event_value(etype: str, which: str, v: int) -> str:
         return _state(v)
     if etype == "TIME_SET":
         return str(v & 0xFFFFFFFF)
+    if etype == "OUTPUT_FAULT":
+        if which == "old":
+            return OUTPUT_FAULT_KINDS[v] if 0 <= v < len(OUTPUT_FAULT_KINDS) else ""
+        return f"OUT{v}"
+    if etype == "OUTPUT_OK" and which == "new":
+        return f"OUT{v}"
     if which == "new":
         if etype == "SERVICE_ON":
             return str(v)

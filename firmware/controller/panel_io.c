@@ -50,4 +50,11 @@ void panel_outputs(const alm_t *a, uint32_t now_ms, panel_out_t *o)
     o->pattern = (uint8_t)panel_buzzer_pattern(a, now_ms);
     const buzzer_rhythm_t *r = &panel_buzzer_rhythm[o->pattern];
     o->buzzer = o->pattern != BZ_OFF && (now_ms % r->period_ms) < r->on_ms;
+    if (s.lamptest) {
+        /* lamp test: every LED and the buzzer, so a dead one is noticed. Relays stay as they are. */
+        for (unsigned k = 0; k < PLED_COUNT; k++) {
+            o->led[k] = 1;
+        }
+        o->buzzer = 1;
+    }
 }

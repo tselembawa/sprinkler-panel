@@ -40,6 +40,7 @@
     </div>
     <div class="sb-hint" id="sb-hint"></div>
   </div>
+  <div class="svc-ribbon" id="svc-ribbon" role="status" hidden></div>
   </div>
 
   <nav class="tabs" role="tablist">
@@ -47,6 +48,7 @@
     <button role="tab" data-tab="graphics" data-i18n="tab.graphics">Grafik</button>
     <button role="tab" data-tab="points" data-i18n="tab.points">Larmpunkter</button>
     <button role="tab" data-tab="events" data-i18n="tab.events">Händelser</button>
+    <button role="tab" data-tab="modules" data-i18n="tab.modules">Moduler</button>
     <button role="tab" data-tab="sim" id="tab-sim" hidden data-i18n="tab.sim">Simulator</button>
     <button role="tab" data-tab="settings" class="tab-settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -180,7 +182,22 @@
         <table class="table" id="events-table">
           <thead><tr>
             <th data-i18n="th.nr">Nr</th><th data-i18n="th.time">Tid</th><th data-i18n="th.event">Händelse</th>
-            <th data-i18n="th.source">Källa</th><th data-i18n="th.change">Ändring</th>
+            <th data-i18n="th.source">Källa</th><th data-i18n="th.change">Ändring</th><th data-i18n="th.by">Av</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================= MODULES ======================= -->
+    <section class="view" id="view-modules">
+      <p class="hint" data-i18n="mod.hint"></p>
+      <div class="card table-wrap">
+        <table class="table" id="modules-table">
+          <thead><tr>
+            <th data-i18n="mod.th.addr">Adress</th><th data-i18n="mod.th.state">Status</th>
+            <th data-i18n="mod.th.inputs">Ingångar 1–4</th><th data-i18n="mod.th.supply">Matning</th>
+            <th data-i18n="mod.th.fw">Version</th><th data-i18n="mod.th.points">Punkter</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -243,6 +260,22 @@
           <h2 data-i18n="set.lang_title">Språk</h2>
           <p class="hint" data-i18n="set.lang_hint"></p>
           <div class="lang-grid" id="lang-grid"></div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="set.lamp_title">Lamptest</h2>
+          <p class="hint" data-i18n="set.lamp_hint"></p>
+          <button class="btn btn-ghost" id="btn-lamptest" data-i18n="set.lamp_btn">Starta lamptest</button>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="set.backup_title">Säkerhetskopia</h2>
+          <p class="hint" data-i18n="set.backup_hint"></p>
+          <div class="row wrap">
+            <a class="btn btn-ghost" id="btn-backup" href="/api/backup" data-i18n="set.backup_btn">Ladda ner säkerhetskopia</a>
+            <button class="btn btn-ghost" id="btn-restore" data-i18n="set.restore_btn">Återställ från fil …</button>
+            <input type="file" id="restore-file" accept=".zip,application/zip" hidden>
+          </div>
         </div>
 
         <div class="card card-system">

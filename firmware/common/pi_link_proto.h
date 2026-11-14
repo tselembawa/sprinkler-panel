@@ -26,6 +26,7 @@
 #define PL_CMD_RESET        0x22u
 #define PL_CMD_DISABLE      0x23u
 #define PL_CMD_SERVICE      0x25u
+#define PL_CMD_LAMPTEST     0x26u   /* user(1): all LEDs + buzzer for 3 s */
 #define PL_SET_TIME         0x30u
 #define PL_SET_LANGUAGE        0x31u
 #define PL_DEV_SET_KEY      0x40u
@@ -49,6 +50,8 @@
 #define PL_MODULE_REC_LEN   12u
 #define PL_CFG_REC_LEN      52u
 #define PL_STATUS_LEN       43u
+#define PL_MODFAULT_REC_LEN 4u      /* line, module, what (1-4 output, 5 supply), kind (ALM_OF_*) */
+#define PL_MODFAULT_MAX     8u
 
 #define PL_LANGUAGE_MAX 6u   /* 0 sv, 1 en, 2 fi, 3 no, 4 da, 5 el, 6 ru */
 #define PL_HMI_LOST_MS      5000u   /* no frame from the Pi this long -> HMI_LOST */

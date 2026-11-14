@@ -66,7 +66,7 @@ void pi_link_log(pi_link_t *l, const char *text)
 static int is_command(uint8_t type)
 {
     return (type >= PL_CFG_BEGIN && type <= PL_CFG_ACTIVATE) ||
-           (type >= PL_CMD_ACK && type <= PL_CMD_SERVICE) || type == PL_SET_TIME ||
+           (type >= PL_CMD_ACK && type <= PL_CMD_LAMPTEST) || type == PL_SET_TIME ||
            type == PL_SET_LANGUAGE || type == PL_DEV_SET_KEY;
 }
 
@@ -100,7 +100,8 @@ static uint16_t do_status(pi_link_t *l, uint32_t now)
                          (s.buzzer ? 0x10u : 0u) | (s.led_red_a ? 0x20u : 0u) |
                          (s.led_yellow_fault ? 0x40u : 0u) | (s.led_green_drift ? 0x80u : 0u));
     resp[17] = (uint8_t)((s.led_green_power ? 0x01u : 0u) | (s.led_yellow_service ? 0x02u : 0u) |
-                         (s.hmi_lost ? 0x04u : 0u) | (uint8_t)((l->language & 0x07u) << 4));
+                         (s.hmi_lost ? 0x04u : 0u) | (s.lamptest ? 0x08u : 0u) |
+                         (uint8_t)((l->language & 0x07u) << 4));
     put32(&resp[18], s.service_remaining_s);
     put32(&resp[22], s.time);
     put32(&resp[26], s.uptime_s);
@@ -116,7 +117,25 @@ static uint16_t do_status(pi_link_t *l, uint32_t now)
         }
     }
     resp[42] = n;
-    return (uint16_t)(PL_STATUS_LEN + 2u * n);
+    /* after the lost modules: faults the modules report about themselves (older HMIs ignore it) */
+    uint8_t *mf = &resp[PL_STATUS_LEN + 2u * n];
+    uint8_t m = 0;
+    for (uint16_t addr = 1; addr <= ALM_MAX_ADDR && m < PL_MODFAULT_MAX; addr++) {
+        const uint8_t bits = l->alm->mod_fault[addr];
+        for (uint8_t b = 0; bits && b < 5u && m < PL_MODFAULT_MAX; b++) {
+            if (!(bits & (1u << b))) {
+                continue;
+            }
+            uint8_t *r = &mf[1u + PL_MODFAULT_REC_LEN * m];
+            r[0] = l->alm->lost_line[addr];
+            r[1] = (uint8_t)addr;
+            r[2] = (uint8_t)(b + 1u);
+            r[3] = b < 4u ? l->alm->out_kind[addr][b] : 0u;
+            m++;
+        }
+    }
+    mf[0] = m;
+    return (uint16_t)(PL_STATUS_LEN + 2u * n + 1u + PL_MODFAULT_REC_LEN * m);
 }
 
 static uint16_t do_points(pi_link_t *l, const uint8_t *p, uint32_t now)
@@ -353,6 +372,10 @@ static uint16_t handle(pi_link_t *l, uint8_t type, const uint8_t *p, uint16_t le
         resp[0] = a->service_active;
         return 1;
     }
+    case PL_CMD_LAMPTEST:
+        NEED(1);
+        alm_lamptest(a, p[0], now);
+        return 0;
     case PL_SET_TIME: {
         NEED(6);
         alm_result_t r = p[5] ? alm_sync_time(a, get32(p), now) : alm_set_time(a, get32(p), p[4], now);

@@ -172,6 +172,15 @@ function renderTop() {
   setLed("#led-fault", s.leds.yellow_fault ? "on-amber" : "");
   setLed("#led-drift", s.leds.green_power ? "on-green" : "");
   setLed("#led-service", s.leds.yellow_service ? "on-amber" : "");
+  if (s.lamptest) {   // lamp test: every lamp lit, like on the panel itself
+    setLed("#led-a", "on-red"); setLed("#led-b", "on-amber"); setLed("#led-fault", "on-amber");
+    setLed("#led-drift", "on-green"); setLed("#led-service", "on-amber");
+  }
+  // service mode is never to be overlooked: a ribbon with the time left, whatever else is shown
+  const rib = $("#svc-ribbon");
+  const svc = s.service && s.service.active;
+  rib.hidden = !svc;
+  if (svc) rib.textContent = t("svc.ribbon", { t: fmtDur(s.service.remaining_s) });
   const sil = $("#btn-silence");
   // The label stays the same (so the button never changes size); the icon and colour show the state.
   const silKey = (s.silenced ? "off" : "on") + L.lang;
@@ -216,6 +225,9 @@ function namesOf(list) {
   return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
 }
 
+// a module's own fault (sounder line, low supply): what and how
+const mfWhat = (f) => (f.what === "SUPPLY" ? t("mf.supply") : `${t("mf.out", { n: f.what.replace("OUT", "") })}: ${t("fault." + (f.kind || "OPEN"))}`);
+
 function renderStatusBand() {
   const s = S.status;
   const items = S.points.map((p) => ({ p, v: visual(p) })).filter((x) => x.v.active);
@@ -235,10 +247,12 @@ function renderStatusBand() {
   }
   // a point can be in alarm AND have a line fault (valve opened, then the cable was cut)
   const faults = items.filter((x) => x.v.kind === "FAULT" || (x.p.runtime && x.p.runtime.fault));
-  if (faults.length || lost.length || !s.relays.K3_FAULT_OK) {
-    const n = faults.length + lost.length;
+  const mf = s.module_faults || [];
+  if (faults.length || lost.length || mf.length || !s.relays.K3_FAULT_OK) {
+    const n = faults.length + lost.length + mf.length;
     const what = faults.length ? `${namesOf(faults)}: ${t("fault." + faults[0].p.runtime.fault)}`
-      : lost.length ? t("band.module_missing", { l: lost[0][0], m: lost[0][1] }) : "";
+      : lost.length ? t("band.module_missing", { l: lost[0][0], m: lost[0][1] })
+      : mf.length ? `${mfWhat(mf[0])} · ${t("ov.line_module", { l: mf[0].line, m: mf[0].module })}` : "";
     setBand("fault", "warn", n > 1 ? `${t("band.fault")} (${n})` : t("band.fault"), what, hint);
     return;
   }
@@ -309,7 +323,8 @@ function renderOverview() {
     .filter((x) => (F ? x.v.active !== undefined && OV_FILTERS[F](x.v, x.p) : x.v.active));
   items.sort((a, b) => a.v.rank - b.v.rank || a.p.id - b.p.id);
   const lost = !F || F === "f" ? (S.status.lost_modules || []) : [];
-  const key = { items: items.map((x) => [x.p.id, x.v.text, x.v.cls]), lost, F, lang: L.lang };
+  const mfs = !F || F === "f" ? (S.status.module_faults || []) : [];
+  const key = { items: items.map((x) => [x.p.id, x.v.text, x.v.cls]), lost, mfs, F, lang: L.lang };
   if (changed("active", key)) {
     const rows = items.map(({ p, v }) => {
       const k = v.kind === "PENDING" ? "B" : v.kind === "OFF" ? "OFF" : v.kind;
@@ -323,6 +338,12 @@ function renderOverview() {
       rows.unshift(`<div class="alarm-row k-FAULT unacked"><div class="cat">${t("short.fault")}</div>
         <div><div class="name">${t("fault.MODULE_LOST")}</div><div class="sub">${t("ov.line_module", { l: line, m: mod })}</div></div>
         <div class="st">${t("ov.no_comm")}</div></div>`);
+    }
+    for (const f of mfs) {
+      rows.unshift(`<div class="alarm-row k-FAULT"><div class="cat">${t("short.fault")}</div>
+        <div><div class="name">${esc(f.what === "SUPPLY" ? t("mf.supply") : t("mf.out", { n: f.what.replace("OUT", "") }))}</div>
+        <div class="sub">${t("ov.line_module", { l: f.line, m: f.module })}</div></div>
+        <div class="st">${esc(f.what === "SUPPLY" ? "" : t("fault." + (f.kind || "OPEN")))}</div></div>`);
     }
     $("#active-list").innerHTML = rows.length ? rows.join("") : `<div class="empty">${t(F ? "ov.filter_empty" : "ov.empty")}</div>`;
     markMore($("#active-list"));
@@ -758,10 +779,31 @@ async function loadEvents() {
     const src = r.source_kind === "POINT" ? `${r.source_id} ${esc(r.point_name || "")}`
       : r.source_kind === "MODULE" ? t("ov.line_module", { l: Math.floor(r.source_id / 1000), m: r.source_id % 1000 }) : t("ev.system");
     const st = (x) => (r.type === "TIME_SET" && x ? fmtTime(Number(x)) : (x && L.dict.strings.sv["state." + x] ? t("state." + x) : x || ""));
-    const ch = r.old || r.new ? `${esc(st(r.old))} → ${esc(st(r.new))}` : "";
-    return `<tr><td>${r.seq}</td><td>${fmtTime(r.time)}</td><td>${esc(t("ev.type." + r.type) === "ev.type." + r.type ? r.type : t("ev.type." + r.type))}</td><td>${src}</td><td>${ch}</td></tr>`;
-  }).join("") : `<tr><td colspan="5" class="empty">${t("ev.empty")}</td></tr>`;
+    const out = /^OUT\d$/.test(r.new || "") ? t("mf.out", { n: r.new.slice(3) }) : "";
+    const ch = r.type === "OUTPUT_FAULT" ? esc(`${out}: ${t("fault." + (r.old || "OPEN"))}`)
+      : r.type === "OUTPUT_OK" ? esc(out)
+      : r.old || r.new ? `${esc(st(r.old))} → ${esc(st(r.new))}` : "";
+    const by = r.user >= 1 && r.user <= 3 ? esc(t("who." + r.user)) : "";
+    return `<tr><td>${r.seq}</td><td>${fmtTime(r.time)}</td><td>${esc(t("ev.type." + r.type) === "ev.type." + r.type ? r.type : t("ev.type." + r.type))}</td><td>${src}</td><td>${ch}</td><td>${by}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">${t("ev.empty")}</td></tr>`;
 }
+// ---------------------------------------------------------------- modules
+async function loadModules() {
+  const mods = await api("/api/modules");
+  if (!changed("modules", [mods, L.lang])) return;
+  const cls = { CLOSED: "", OPEN: "", LINE_OPEN: "bad", LINE_SHORT: "bad", NOT_USED: "off", MEASURE_FAULT: "bad" };
+  $("#modules-table tbody").innerHTML = mods.length ? mods.map((m) => {
+    const bad = m.lost || m.state !== "RUN";
+    const state = `<span class="state ${bad ? "bad" : "ok"}">${esc(t("mod.state." + (m.lost ? "LOST" : m.state)))}</span>`;
+    const ins = m.inputs.map((v, n) => `<span class="in-chip ${cls[v] || ""}"><b>${n + 1}</b> ${esc(t("in." + v))}</span>`).join("");
+    const faults = m.faults.map((f) => `<div class="mod-fault">${esc(mfWhat(f))}</div>`).join("");
+    const low = m.faults.some((f) => f.what === "SUPPLY");
+    return `<tr><td><b>${t("ov.line_module", { l: m.line, m: m.module })}</b></td><td>${state}${faults}</td>
+      <td><div class="in-chips">${bad ? "–" : ins}</div></td>
+      <td class="${low ? "txt-bad" : ""}">${bad ? "–" : `${m.supply_v.toFixed(1)} V`}</td><td>${esc(m.firmware)}</td><td>${m.points}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">${t("mod.empty")}</td></tr>`;
+}
+
 let evTimer;
 $("#event-search").addEventListener("input", () => { clearTimeout(evTimer); evTimer = setTimeout(loadEvents, 300); });
 
@@ -872,6 +914,7 @@ function showTab(name) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${name}`));
   hidePopover();
   if (name === "events") loadEvents();
+  if (name === "modules") loadModules().catch(() => {});
   if (name === "graphics") { S.cache.chips = S.cache.canvas = null; renderGraphics(); }
   if (name === "settings") renderSettings(true);
 }
@@ -914,6 +957,7 @@ async function refresh() {
                         () => renderSettings(false), autoShowNewAlarm]) {
       try { draw(); } catch (e) { console.error("render failed:", draw.name || "settings", e); }
     }
+    if (S.tab === "modules") loadModules().catch(() => {});
   } catch (err) {
     $("#led-drift").className = "led";
     buzzerSet(null);
@@ -945,6 +989,7 @@ function renderSettings(force) {
   $("#btn-service-end").hidden = !(sv && sv.active);
   $("#btn-service-end").disabled = !tech;
   $("#btn-reboot").disabled = !tech;
+  $("#btn-restore").disabled = !tech;
   if (changed("svcbtns", [L.lang, tech])) {
     $("#service-btns").innerHTML = [30, 60, 120, 240, 480].map((m) =>
       `<button class="btn btn-ghost" data-service="${m}" ${tech ? "" : "disabled"}>${fmtDur(m * 60)}</button>`).join("");
@@ -996,6 +1041,28 @@ $("#btn-service-end").addEventListener("click", () => {
   setService(0);
 });
 
+// Lamp test: everyone may start it (it changes nothing but the lamps and the buzzer for 3 s).
+$("#btn-lamptest").addEventListener("click", async () => {
+  try { await api("/api/cmd/lamptest", { json: {} }); await refresh(); } catch (err) { toast(errText(err), "bad"); }
+});
+
+// Backup: the link downloads the file. Restore: technician key, asks first.
+$("#btn-restore").addEventListener("click", () => { if (requireTech()) $("#restore-file").click(); });
+$("#restore-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || !confirm(t("set.restore_confirm"))) return;
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    const res = await api("/api/restore", { method: "POST", body });
+    toast(t("set.restore_done", { n: res.points, p: res.pages }), "ok");
+    S.cache = {};
+    await refresh();
+    await loadPages();
+  } catch (err) { toast(errText(err), "bad"); }
+});
+
 // Restart of the panel computer: technician key only (also checked by the server).
 $("#btn-reboot").addEventListener("click", async () => {
   if (!confirm(t("set.reboot_confirm"))) return;
@@ -1029,6 +1096,7 @@ function setLanguage(lang) {
   if (S.status) { renderTop(); renderOverview(); renderGraphics(); renderPointsTable(); renderSim(); }
   renderSettings(true);
   if (S.tab === "events") loadEvents();
+  if (S.tab === "modules") loadModules().catch(() => {});
 }
 
 // ---------------------------------------------------------------- scroll rail ("elevator")

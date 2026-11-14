@@ -46,6 +46,17 @@ int main(void)
     CHECK(o.led[PLED_POWER_GREEN] && !o.led[PLED_A_RED] && !o.led[PLED_BC_YELLOW]);
     CHECK(o.pattern == BZ_OFF && sounding_ms(5000) == 0);
 
+    /* lamp test: every LED and the buzzer for 3 s, the relays stay as they are */
+    alm_lamptest(&a, ALM_USER_PANEL, now);
+    panel_outputs(&a, now + 100u, &o);
+    int all = 1;
+    for (unsigned k = 0; k < PLED_COUNT; k++) all &= o.led[k];
+    CHECK(all && o.buzzer && o.relays == ALM_K3_FAULT_OK);
+    alm_tick(&a, now + ALM_LAMPTEST_MS + 100u);
+    panel_outputs(&a, now + ALM_LAMPTEST_MS + 100u, &o);
+    CHECK(!o.led[PLED_A_RED] && !o.buzzer && o.led[PLED_POWER_GREEN]);
+    alm_tick(&a, now);
+
     /* B alarm: K2, yellow LED flashing, slow buzzer 1 s on / 1 s off */
     alm_set_input(&a, 1, 2, 1, 1, now);
     panel_outputs(&a, now, &o);

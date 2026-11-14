@@ -17,6 +17,7 @@ import subprocess
 import threading
 import time
 import uuid
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -190,6 +191,12 @@ def need_tech():
     return None if controller.get_status()["key_tech"] else err("ACCESS_DENIED", 403)
 
 
+def who(request: Request) -> int:
+    """Who gives a command, for the event list: 2 = the panel's own screen, 3 = a browser on the
+    network (0 = the panel itself, 1 = a button on the panel: set by the controller)."""
+    return 2 if request.client and request.client.host in ("127.0.0.1", "::1") else 3
+
+
 def parse_point(body: dict) -> dict:
     def as_int(key, default=None):
         v = body.get(key, default)
@@ -300,17 +307,20 @@ async def api_cmd(request: Request):
     body = {}
     with contextlib.suppress(Exception):
         body = await request.json()
+    user = who(request)
     try:
         if cmd == "ack":
-            result = controller.cmd_ack()
+            result = controller.cmd_ack(user)
         elif cmd == "reset":
-            result = controller.cmd_reset()
+            result = controller.cmd_reset(user)
         elif cmd == "silence":
-            result = controller.cmd_silence(bool(body.get("silence", True)))
+            result = controller.cmd_silence(bool(body.get("silence", True)), user)
         elif cmd == "service":
-            result = controller.cmd_service(int(body.get("minutes", 0)))
+            result = controller.cmd_service(int(body.get("minutes", 0)), user)
         elif cmd == "disable":
-            result = controller.cmd_disable(int(body["point_id"]), bool(body.get("disabled", True)))
+            result = controller.cmd_disable(int(body["point_id"]), bool(body.get("disabled", True)), user)
+        elif cmd == "lamptest":
+            result = controller.cmd_lamptest(user)
         else:
             return err("UNKNOWN_COMMAND", 404)
     except CommandError as e:
@@ -332,9 +342,7 @@ async def api_events(request: Request):
     return JSONResponse(rows)
 
 
-async def api_events_csv(request: Request):
-    rows = db.events(100000, request.query_params.get("q", "").strip())
-    lang = language()
+def events_csv(rows: list[dict], lang: str) -> str:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
     w.writerow([tr(k, lang) for k in ("th.nr", "th.time", "th.event")] + ["Type", tr("th.source", lang), "Id",
@@ -343,8 +351,13 @@ async def api_events_csv(request: Request):
         w.writerow([r["seq"], datetime.fromtimestamp(r["time"]).strftime("%Y-%m-%d %H:%M:%S"),
                     event_label(r["type"], lang), r["type"], r["source_kind"], r["source_id"],
                     r.get("point_name") or "", r["old"] or "", r["new"] or ""])
+    return "﻿" + buf.getvalue()
+
+
+async def api_events_csv(request: Request):
+    rows = db.events(100000, request.query_params.get("q", "").strip())
     name = f"events_{datetime.now():%Y%m%d_%H%M}.csv"
-    return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+    return Response(events_csv(rows, language()), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
@@ -412,6 +425,114 @@ async def api_marker_delete(request: Request):
     return JSONResponse({"deleted": True})
 
 
+async def api_modules(request: Request):
+    """The modules as the controller sees them (state, inputs, supply voltage, firmware)."""
+    mods = controller.get_modules() if hasattr(controller, "get_modules") else []
+    status = controller.get_status()
+    lost = {tuple(x) for x in status.get("lost_modules", [])}
+    faults = status.get("module_faults", [])
+    names = ("CLOSED", "OPEN", "LINE_OPEN", "LINE_SHORT", "NOT_USED", "MEASURE_FAULT")
+    out = []
+    for m in mods:
+        ins = [(m["inputs"] >> (4 * n)) & 0xF for n in range(4)]
+        out.append({
+            "line": m["line"], "module": m["address"], "state": m["state"],
+            "lost": (m["line"], m["address"]) in lost,
+            "inputs": [names[v] if v < len(names) else "?" for v in ins],
+            "supply_v": round(m["supply_mv"] / 1000, 1), "firmware": m["firmware"], "fails": m["fails"],
+            "faults": [f for f in faults if f["line"] == m["line"] and f["module"] == m["address"]],
+            "points": sum(1 for p in db.points() if p["line"] == m["line"] and p["module"] == m["address"]),
+        })
+    return JSONResponse(out)
+
+
+# --- backup and restore of the installation (points, pictures, markers, language) + the event list
+BACKUP_FORMAT = 1
+MAX_RESTORE_BYTES = 300 * 1024 * 1024
+
+
+async def api_backup(request: Request):
+    lang = language()
+    pages = []
+    for pg in db.pages():
+        pages.append({"name": pg["name"], "filename": pg["filename"],
+                      "markers": [{"x": m["x"], "y": m["y"], "point_id": m["point_id"]} for m in db.markers(pg["id"])]})
+    doc = {"format": BACKUP_FORMAT, "created": int(time.time()), "language": lang,
+           "config_crc": f"{P.config_crc(db.points()):08X}", "points": db.points(), "pages": pages}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("backup.json", json.dumps(doc, ensure_ascii=False, indent=1))
+        z.writestr("events.csv", events_csv(db.events(1000000, ""), lang))
+        for pg in pages:
+            f = UPLOADS / (pg["filename"] or "")
+            if pg["filename"] and f.is_file():
+                z.write(f, f"uploads/{pg['filename']}")
+    name = f"sprinkler-backup_{datetime.now():%Y%m%d_%H%M}.zip"
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+async def api_restore(request: Request):
+    """Puts back points, pictures, markers and language from a backup file. The event list on
+    the panel is kept as it is (the backup's events.csv is for reading)."""
+    if (denied := need_tech()) is not None:
+        return denied
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not getattr(upload, "filename", ""):
+        return err("BAD_BACKUP")
+    data = await upload.read()
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        if sum(i.file_size for i in z.infolist()) > MAX_RESTORE_BYTES:
+            return err("TOO_BIG")
+        doc = json.loads(z.read("backup.json").decode("utf-8"))
+        if doc.get("format") != BACKUP_FORMAT:
+            return err("BAD_BACKUP")
+        points = [parse_point(p) for p in doc["points"]]
+        pages = []
+        for pg in doc.get("pages", []):
+            fn = Path(str(pg.get("filename") or "")).name          # never a path
+            if not fn or Path(fn).suffix.lower() not in ALLOWED_IMAGES:
+                return err("BAD_BACKUP")
+            info = z.getinfo(f"uploads/{fn}")
+            if info.file_size > MAX_IMAGE_BYTES:
+                return err("TOO_BIG")
+            marks = [(float(m["x"]), float(m["y"]), int(m["point_id"])) for m in pg.get("markers", [])]
+            if any(not (0 <= x <= 1 and 0 <= y <= 1) for x, y, _ in marks):
+                return err("BAD_BACKUP")
+            pages.append((str(pg.get("name", ""))[:60] or "Bild", fn, z.read(info), marks))
+    except (zipfile.BadZipFile, KeyError, ValueError, TypeError, UnicodeDecodeError):
+        return err("BAD_BACKUP")
+
+    # 1. the points: the controller must accept them, otherwise nothing is changed
+    resp = save_points(points)
+    if resp.status_code != 200:
+        return resp
+    # 2. pictures and markers
+    for old in db.pages():
+        for m in db.markers(old["id"]):
+            db.delete_marker(m["id"])
+        db.delete_page(old["id"])
+        if old["filename"]:
+            with contextlib.suppress(FileNotFoundError):
+                (UPLOADS / old["filename"]).unlink()
+    ids = {p["id"] for p in points}
+    for name, fn, blob, marks in pages:
+        stored = f"{uuid.uuid4().hex}{Path(fn).suffix.lower()}"
+        (UPLOADS / stored).write_bytes(blob)
+        page_id = db.add_page(name, stored)
+        for x, y, pid in marks:
+            if pid in ids:
+                db.add_marker(page_id, x, y, pid)
+    # 3. language
+    if doc.get("language") in LANGUAGES:
+        db.set_setting("language", doc["language"])
+        with contextlib.suppress(ControllerUnavailable):
+            push_language_if_needed()
+    return JSONResponse({"restored": True, "points": len(points), "pages": len(pages)})
+
+
 async def api_health(request: Request):
     report = health.check()
     return JSONResponse(report, status_code=200 if report["ok"] else 503)
@@ -439,7 +560,7 @@ async def api_settings(request: Request):
 async def api_time(request: Request):
     body = await request.json()
     try:
-        result = controller.set_time(float(body["time"]))
+        result = controller.set_time(float(body["time"]), who(request))
     except (KeyError, TypeError, ValueError):
         return err("BAD_TIME")
     except CommandError as e:
@@ -495,6 +616,9 @@ async def api_sim(request: Request):
             controller.sim_set_key(bool(body["tech"]))
         elif what == "module":
             controller.sim_set_module_lost(int(body["line"]), int(body["module"]), bool(body["lost"]))
+        elif what == "modfault":
+            controller.sim_set_module_fault(int(body["line"]), int(body["module"]), str(body["what"]),
+                                            body.get("kind"))
         else:
             return err("NOT_FOUND", 404)
     except CommandError as e:
@@ -532,6 +656,9 @@ routes = [
     Route("/api/meta", api_meta),
     Route("/api/status", api_status),
     Route("/api/health", api_health),
+    Route("/api/modules", api_modules),
+    Route("/api/backup", api_backup),
+    Route("/api/restore", api_restore, methods=["POST"]),
     Route("/api/points", api_points, methods=["GET"]),
     Route("/api/points", api_point_save, methods=["POST"]),
     Route("/api/points/{pid:int}", api_point_delete, methods=["DELETE"]),

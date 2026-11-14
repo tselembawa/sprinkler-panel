@@ -422,6 +422,7 @@ void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_
         a->lost_count++;
         event(a, EVT_MODULE_LOST, SRC_MODULE, sid, 0, 0, 0);
         a->lost_unacked[addr >> 3] |= bit;
+        alm_forget_module(a, addr, now_ms);     /* it reports its own faults again when it is back */
     } else if (!lost && lost_get(a, addr)) {
         a->lost[addr >> 3] &= (uint8_t)~bit;
         a->lost_unacked[addr >> 3] &= (uint8_t)~bit;
@@ -429,6 +430,75 @@ void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_
         event(a, EVT_MODULE_BACK, SRC_MODULE, sid, 0, 0, 0);
     }
     evaluate_all(a);
+}
+
+/* ---- faults a module reports about itself -------------------------------------------------- */
+static void mod_fault_set(alm_t *a, uint8_t addr, uint8_t bit, int on)
+{
+    if (on && !(a->mod_fault[addr] & bit)) {
+        a->mod_fault[addr] |= bit;
+        a->mod_unacked[addr] |= bit;
+        a->mod_fault_count++;
+    } else if (!on && (a->mod_fault[addr] & bit)) {
+        a->mod_fault[addr] &= (uint8_t)~bit;
+        a->mod_unacked[addr] &= (uint8_t)~bit;      /* gone by itself: no Kvittera needed */
+        a->mod_fault_count--;
+    }
+}
+
+void alm_set_output_fault(alm_t *a, uint8_t line, uint8_t addr, uint8_t out, uint8_t kind, uint32_t now_ms)
+{
+    if (addr == 0u || addr > ALM_MAX_ADDR || out < 1u || out > 4u || kind > ALM_OF_OVERCURRENT) {
+        return;
+    }
+    const uint8_t n = (uint8_t)(out - 1u);
+    if (a->out_kind[addr][n] == kind) {
+        return;
+    }
+    a->now_ms = now_ms;
+    a->lost_line[addr] = line;
+    const uint16_t sid = (uint16_t)(line * 1000u + addr);
+    a->out_kind[addr][n] = kind;
+    if (kind != ALM_OF_OK) {
+        mod_fault_set(a, addr, ALM_MF_OUT(n), 0);          /* another kind: a new fault to acknowledge */
+        mod_fault_set(a, addr, ALM_MF_OUT(n), 1);
+        event(a, EVT_OUTPUT_FAULT, SRC_MODULE, sid, kind, out, 0);
+    } else {
+        mod_fault_set(a, addr, ALM_MF_OUT(n), 0);
+        event(a, EVT_OUTPUT_OK, SRC_MODULE, sid, 0, out, 0);
+    }
+}
+
+void alm_set_supply_low(alm_t *a, uint8_t line, uint8_t addr, int low, uint32_t now_ms)
+{
+    if (addr == 0u || addr > ALM_MAX_ADDR || !low == !(a->mod_fault[addr] & ALM_MF_SUPPLY)) {
+        return;
+    }
+    a->now_ms = now_ms;
+    a->lost_line[addr] = line;
+    mod_fault_set(a, addr, ALM_MF_SUPPLY, low);
+    event(a, low ? EVT_SUPPLY_LOW : EVT_SUPPLY_OK, SRC_MODULE, (uint16_t)(line * 1000u + addr), 0, 0, 0);
+}
+
+void alm_forget_module(alm_t *a, uint8_t addr, uint32_t now_ms)
+{
+    if (addr == 0u || addr > ALM_MAX_ADDR) {
+        return;
+    }
+    a->now_ms = now_ms;
+    for (uint8_t n = 0; n < 4u; n++) {
+        mod_fault_set(a, addr, ALM_MF_OUT(n), 0);
+        a->out_kind[addr][n] = ALM_OF_OK;
+    }
+    mod_fault_set(a, addr, ALM_MF_SUPPLY, 0);
+}
+
+void alm_lamptest(alm_t *a, uint8_t user, uint32_t now_ms)
+{
+    a->now_ms = now_ms;
+    a->lamptest = 1;
+    a->lamptest_until_ms = now_ms + ALM_LAMPTEST_MS;
+    event(a, EVT_LAMPTEST, SRC_SYSTEM, 0, 0, 0, user);
 }
 
 void alm_set_key(alm_t *a, int tech)
@@ -473,6 +543,9 @@ void alm_tick(alm_t *a, uint32_t now_ms)
         event(a, EVT_SERVICE_OFF, SRC_SYSTEM, 0, 0, 0, 0);   /* new_v 0 = timeout */
     }
     /* latched here, so the fault does not vanish when the 32-bit tick wraps (49.7 days) */
+    if (a->lamptest && (int32_t)(now_ms - a->lamptest_until_ms) >= 0) {
+        a->lamptest = 0;
+    }
     if (a->hmi_lost && !a->hmi_fault && now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS) {
         a->hmi_fault = 1;
     }
@@ -505,6 +578,12 @@ uint16_t alm_ack(alm_t *a, uint8_t user, uint32_t now_ms)
     for (size_t k = 0; k < sizeof(a->lost_unacked); k++) {
         if (a->lost_unacked[k]) {
             a->lost_unacked[k] = 0;
+            faults = 1;
+        }
+    }
+    for (size_t k = 0; k < sizeof(a->mod_unacked); k++) {
+        if (a->mod_unacked[k]) {
+            a->mod_unacked[k] = 0;
             faults = 1;
         }
     }
@@ -725,16 +804,20 @@ alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t n
 alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms)
 {
     a->now_ms = now_ms;
-    if (alm_time(a, now_ms) >= 946684800u) {   /* already set */
-        return ALM_ACCESS_DENIED;
-    }
     if (unix_time < 946684800u || unix_time > 4102444800u) {
         return ALM_BAD_TIME;
     }
-    uint32_t old = alm_time(a, now_ms);
-    /* events logged before this moment keep their old (1970) time stamps */
+    const uint32_t old = alm_time(a, now_ms);
+    const int was_valid = old >= 946684800u;
+    const uint32_t diff = old > unix_time ? old - unix_time : unix_time - old;
+    if (was_valid && diff <= 2u) {
+        return ALM_OK;                          /* close enough */
+    }
+    /* events logged before this moment keep their old time stamps */
     a->time_offset = (int64_t)unix_time - (int64_t)(mono_now(a, now_ms) / 1000u);
-    event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, 0);
+    if (!was_valid || diff >= ALM_TIME_LOG_S) {
+        event(a, EVT_TIME_SET, SRC_SYSTEM, 0, (int32_t)old, (int32_t)unix_time, 0);
+    }
     service_clock_changed(a, now_ms);
     return ALM_OK;
 }
@@ -758,6 +841,9 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
     for (size_t k = 0; k < sizeof(a->lost_unacked); k++) {
         if (a->lost_unacked[k]) unacked = 1;
     }
+    for (size_t k = 0; k < sizeof(a->mod_unacked); k++) {
+        if (a->mod_unacked[k]) unacked = 1;
+    }
     int fire = 0;
     for (uint16_t i = 0; i < a->n; i++) {
         const alm_point_rt_t *rt = &a->rt[i];
@@ -779,7 +865,9 @@ void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s)
     s->hmi_lost = a->hmi_lost;
     const int hmi_fault = a->hmi_lost && !a->service_active &&
                           (a->hmi_fault || now_ms - a->hmi_lost_since_ms >= ALM_HMI_FAULT_MS);
-    s->fault = (uint16_t)(fault_points + a->lost_count + (hmi_fault ? 1u : 0u));
+    s->module_faults = a->mod_fault_count;
+    s->fault = (uint16_t)(fault_points + a->lost_count + a->mod_fault_count + (hmi_fault ? 1u : 0u));
+    s->lamptest = a->lamptest && (int32_t)(now_ms - a->lamptest_until_ms) < 0;
 
     uint8_t logical = 0;
     if (s->a) logical |= ALM_K1_A;
@@ -834,7 +922,8 @@ const char *alm_event_name(uint8_t t)
         "STARTUP", "CONFIG_ACTIVATED", "DELAY_STARTED", "DELAY_CANCELLED", "ALARM_ON",
         "ALARM_CLEARED", "LINE_OPEN", "LINE_SHORT", "LINE_OK", "MODULE_LOST", "MODULE_BACK",
         "ACK", "RESET", "SILENCE", "UNSILENCE", "RESOUND", "SERVICE_ON", "SERVICE_OFF",
-        "POINT_DISABLED", "POINT_ENABLED", "TIME_SET", "HMI_LOST", "HMI_BACK"};
+        "POINT_DISABLED", "POINT_ENABLED", "TIME_SET", "HMI_LOST", "HMI_BACK",
+        "OUTPUT_FAULT", "OUTPUT_OK", "SUPPLY_LOW", "SUPPLY_OK", "LAMPTEST"};
     return t < EVT_COUNT ? names[t] : "?";
 }
 

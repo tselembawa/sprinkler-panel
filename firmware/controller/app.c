@@ -352,6 +352,23 @@ static void on_module_event(void *ctx, const ctrl_module_t *m, ctrl_event_t ev,
     }
 }
 
+/* A module's own faults (decided 2026-11-14): the supervised output line (the sounders) and a
+ * low supply voltage are faults of the panel. Taken from what the module reported last; the
+ * engine only reacts to a change. */
+static void sync_module_faults(const ctrl_module_t *m)
+{
+    if (m->state != MOD_RUN || !m->have_data) {
+        return;
+    }
+    const uint32_t now = HAL_GetTick();
+    for (uint8_t n = 0; n < 4u; n++) {
+        uint8_t sup = MB_NIBBLE(m->outputs, n) & 0x7u;
+        uint8_t kind = (sup >= MB_OUT_SUP_LINE_OPEN && sup <= MB_OUT_SUP_OVERCURRENT) ? sup : ALM_OF_OK;
+        alm_set_output_fault(&engine, m->line, m->addr, (uint8_t)(n + 1u), kind, now);
+    }
+    alm_set_supply_low(&engine, m->line, m->addr, (m->status & MB_ST_SUPPLY_LOW) != 0u, now);
+}
+
 /* ---- events from the alarm engine: the Pi reads them with GET_EVENTS; short log line ---- */
 static void on_alarm_event(void *ctx, const alm_event_t *e)
 {
@@ -402,6 +419,18 @@ static void build_modules(void)
         }
         if (!used) {
             alm_set_module_lost(&engine, engine.lost_line[addr], (uint8_t)addr, 0, now);
+        }
+    }
+    for (uint16_t addr = 1; addr <= ALM_MAX_ADDR; addr++) {
+        if (engine.mod_fault[addr] == 0u) {
+            continue;
+        }
+        uint8_t used = 0;
+        for (uint16_t i = 0; i < engine.n && !used; i++) {
+            used = engine.cfg[i].module == addr;
+        }
+        if (!used) {
+            alm_forget_module(&engine, (uint8_t)addr, now);
         }
     }
     for (uint16_t i = 0; i < engine.n; i++) {
@@ -478,7 +507,7 @@ static void check_button(void)
     }
     uint8_t pressed = (now != button_idle);
     if (pressed && !button_pressed) {
-        out("Bla knappen: Kvittera, %u kvitterade\n", alm_ack(&engine, 1, t));
+        out("Bla knappen: Kvittera, %u kvitterade\n", alm_ack(&engine, ALM_USER_PANEL, t));
     }
     button_pressed = pressed;
 }
@@ -767,6 +796,7 @@ void app_loop(void)
             drive_module_outputs();
         }
         ctrl_module_poll(&line1, &modules[poll_index], on_module_event, NULL);
+        sync_module_faults(&modules[poll_index]);
         poll_index++;
         service_pi();
     } else if ((int32_t)(t - next_cycle) >= 0) {

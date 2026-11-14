@@ -383,6 +383,39 @@ static void test_languages_and_greek(void)
     screen_row(2, row);
     CHECK(row[0] == 0x08 + slot_b);
 
+    /* a module's own faults and the lamp test, in every language (2026-11-14) */
+    for (uint8_t lg = 0; lg < LANG_COUNT; lg++) {
+        lang = lg;
+        lcd_view_init(&v);
+        alm_init(&eng, now, 0, NULL, NULL);
+        CHECK(alm_load(&eng, pts, 1, 0, now, NULL, 0) == 0);
+        for (uint8_t kind = ALM_OF_OPEN; kind <= ALM_OF_OVERCURRENT; kind++) {
+            alm_set_output_fault(&eng, 1, 2, 1, kind, now);
+            rows_of(&v, r);
+            for (int k = 0; k < 4; k++) CHECK(strlen(r[k]) > 0 && strchr(r[k], '?') == NULL);
+            CHECK(own_letters(r) <= 8);
+            CHECK(strstr(r[3], "L1-M02") != NULL);
+        }
+        alm_ack(&eng, 1, now);
+        alm_set_output_fault(&eng, 1, 2, 1, ALM_OF_OK, now);
+        alm_set_supply_low(&eng, 1, 2, 1, now);
+        rows_of(&v, r);
+        CHECK(strlen(r[1]) > 0 && r[2][0] == 0 && own_letters(r) <= 8 && strstr(r[3], "L1-M02") != NULL);
+        alm_lamptest(&eng, 1, now);
+        rows_of(&v, r);
+        CHECK(strcmp(r[0], "####################") == 0 && strlen(r[1]) > 0 && own_letters(r) <= 8);
+    }
+    lang = LANG_SV; lcd_view_init(&v);
+    alm_init(&eng, now, 0, NULL, NULL);
+    CHECK(alm_load(&eng, pts, 1, 0, now, NULL, 0) == 0);
+    alm_set_output_fault(&eng, 1, 2, 1, ALM_OF_OPEN, now);
+    rows_of(&v, r);
+    CHECK_STR(r[0], "FEL"); CHECK_STR(r[1], "LARMDON UTG\xC5NG 1"); CHECK_STR(r[2], "AVBROTT");
+    CHECK_STR(r[3], "L1-M02  EJ KVITTERAD");
+    alm_set_input(&eng, 1, 2, 2, 0, now);                  /* fire comes first, the fault second */
+    rows_of(&v, r);
+    CHECK_STR(r[0], "BRANDLARM        1/2");
+
     /* every fixed text of every language fits on the display */
     for (uint8_t lg = 0; lg < LANG_COUNT; lg++) {
         lang = lg;

@@ -83,6 +83,10 @@ class SimController:
         self._events: list[Event] = []
         self._seq = start_seq  # the real controller keeps this in FRAM across restarts
         self._lost_unacked: set = set()   # lost modules not acknowledged yet
+        # faults a module reports about itself: (line, module, what) -> kind; what = OUT1..4 / SUPPLY
+        self._module_faults: dict[tuple[int, int, str], str] = {}
+        self._modfault_unacked: set = set()
+        self._lamptest_until = 0.0
         self._key_tech = False
         self._disabled: set[int] = set()  # runtime disablement (bortkoppling)
         self._time_offset = 0.0  # simulated RTC: wall clock + offset
@@ -170,6 +174,52 @@ class SimController:
                 self._lost_unacked.discard(key)
                 self._event("MODULE_BACK", "MODULE", sid)
             self._evaluate_all()
+
+    def sim_set_module_fault(self, line: int, module: int, what: str, kind: str | None):
+        """Like the real controller's alm_set_output_fault / alm_set_supply_low.
+        what = OUT1..OUT4 (kind OPEN/SHORT/OVERCURRENT) or SUPPLY (kind ""); kind None = OK again."""
+        with self._lock:
+            key = (line, module, what)
+            sid = line * 1000 + module
+            if kind is None:
+                if key in self._module_faults:
+                    del self._module_faults[key]
+                    self._modfault_unacked.discard(key)
+                    self._event("SUPPLY_OK" if what == "SUPPLY" else "OUTPUT_OK", "MODULE", sid,
+                                new="" if what == "SUPPLY" else what)
+            elif self._module_faults.get(key) != kind:
+                self._module_faults[key] = kind
+                self._modfault_unacked.add(key)
+                if what == "SUPPLY":
+                    self._event("SUPPLY_LOW", "MODULE", sid)
+                else:
+                    self._event("OUTPUT_FAULT", "MODULE", sid, old=kind, new=what)
+
+    def cmd_lamptest(self, user: int = 0) -> dict:
+        with self._lock:
+            self._lamptest_until = self._clock() + 3
+            self._event("LAMPTEST", "SYSTEM", 0, user=user)
+            return {"lamptest": True}
+
+    def get_modules(self) -> list[dict]:
+        """The modules of the configuration, as the real controller reports them."""
+        with self._lock:
+            names = {"NORMAL": 0, "ACTIVE": 1, "OPEN": 2, "SHORT": 3}
+            mods: dict[tuple[int, int], list[int]] = {}
+            for cfg in self._cfg.points.values():
+                ins = mods.setdefault((cfg["line"], cfg["module"]), [4, 4, 4, 4])
+                cond = self._inputs.get((cfg["line"], cfg["module"], cfg["channel"]), "NORMAL")
+                closed_is_normal = cfg["contact"] == "NC"
+                ins[cfg["channel"] - 1] = {0: 0 if closed_is_normal else 1, 1: 1 if closed_is_normal else 0,
+                                           2: 2, 3: 3}[names.get(cond, 0)]
+            out = []
+            for (line, module), ins in sorted(mods.items()):
+                lost = (line, module) in self._lost_modules
+                out.append({"address": module, "line": line, "state": "LOST" if lost else "RUN",
+                            "inputs": sum(v << (4 * n) for n, v in enumerate(ins)), "status": 0,
+                            "supply_mv": 13000 if (line, module, "SUPPLY") in self._module_faults else 24000,
+                            "firmware": "sim", "fails": 3 if lost else 0})
+            return out
 
     def sim_set_key(self, tech: bool):
         with self._lock:
@@ -284,7 +334,9 @@ class SimController:
                 elif rt.state == "LATCHED" and not rt.acked:
                     rt.acked = True
                     n += 1
-            faults = bool(self._lost_unacked) or any(rt.fault_unacked for rt in self._rt.values())
+            faults = (bool(self._lost_unacked) or bool(self._modfault_unacked)
+                      or any(rt.fault_unacked for rt in self._rt.values()))
+            self._modfault_unacked.clear()
             self._lost_unacked.clear()
             for rt in self._rt.values():
                 rt.fault_unacked = False
@@ -368,7 +420,7 @@ class SimController:
         with self._lock:
             a_active = b_unacked = c_active = drift = disabled = 0
             fault_points = 0
-            unacked = bool(self._lost_unacked)
+            unacked = bool(self._lost_unacked) or bool(self._modfault_unacked)
             for pid, cfg in self._cfg.points.items():
                 rt = self._rt.get(pid, Runtime())
                 if not self._is_enabled(pid):
@@ -392,7 +444,7 @@ class SimController:
                     fault_points += 1
                 if cat != "DRIFT" and in_alarm and not rt.acked:
                     unacked = True
-            faults = fault_points + len(self._lost_modules)
+            faults = fault_points + len(self._lost_modules) + len(self._module_faults)
             service = self._service_until is not None
             logical = {
                 "K1_A": a_active > 0,
@@ -437,6 +489,9 @@ class SimController:
                     "remaining_s": int(max(0, self._service_until - self._clock())) if self._service_until else 0,
                 },
                 "lost_modules": sorted(self._lost_modules),
+                "module_faults": [{"line": k[0], "module": k[1], "what": k[2], "kind": v}
+                                  for k, v in sorted(self._module_faults.items())],
+                "lamptest": self._clock() < self._lamptest_until,
             }
 
     def get_points(self) -> list[dict]:

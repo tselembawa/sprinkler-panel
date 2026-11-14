@@ -480,13 +480,92 @@ static void test_hmi_lost_gives_fault_after_120_minutes(void)
     CHECK(last_event_is(EVT_HMI_BACK) && (status().relays & ALM_K3_FAULT_OK));
 }
 
-static void test_sync_time_only_once_without_key(void)
+/* decided 2026-11-14: the Pi keeps the controller clock right, at any time, without the key */
+static int count_events(uint8_t type)
+{
+    alm_event_t e[ALM_EVENT_BUF];
+    uint16_t n = alm_events(&ctl, 0, e, ALM_EVENT_BUF);
+    int c = 0;
+    for (uint16_t i = 0; i < n; i++) {
+        c += e[i].type == type;
+    }
+    return c;
+}
+
+static void test_pi_keeps_the_clock_right(void)
 {
     fresh();
-    CHECK(alm_sync_time(&ctl, 1800000000u, now) == ALM_OK);
+    CHECK(alm_sync_time(&ctl, 1800000000u, now) == ALM_OK);            /* first time after start */
+    CHECK(status().time == 1800000000u && count_events(EVT_TIME_SET) == 1);
+    CHECK(alm_sync_time(&ctl, 1800000002u, now) == ALM_OK);            /* 2 s: left alone */
     CHECK(status().time == 1800000000u);
-    CHECK(alm_sync_time(&ctl, 1900000000u, now) == ALM_ACCESS_DENIED);   /* already valid */
-    CHECK(status().time == 1800000000u);
+    CHECK(alm_sync_time(&ctl, 1800000020u, now) == ALM_OK);            /* drift: corrected quietly */
+    CHECK(status().time == 1800000020u && count_events(EVT_TIME_SET) == 1);
+    CHECK(alm_sync_time(&ctl, 1800007220u, now) == ALM_OK);            /* the Pi's clock was 2 h wrong */
+    CHECK(status().time == 1800007220u && count_events(EVT_TIME_SET) == 2);
+    CHECK(alm_sync_time(&ctl, 100u, now) == ALM_BAD_TIME);
+    CHECK(status().time == 1800007220u);
+
+    /* service keeps the time it has left when the clock is corrected */
+    alm_set_key(&ctl, 1);
+    alm_service(&ctl, 30, 1, now);
+    CHECK(alm_sync_time(&ctl, 1800010000u, now) == ALM_OK);
+    CHECK(status().service_active && status().service_remaining_s == 30u * 60u);
+}
+
+/* decided 2026-11-14: a module's own faults (sounder line, low supply) are faults of the panel */
+static void test_module_faults_sounder_line_and_supply(void)
+{
+    fresh();
+    alm_point_cfg_t p[] = {point(1, CAT_B, DT_SERVICEVENTIL, 0, 0)};
+    load(p, 1);
+    alm_set_output_fault(&ctl, 1, 2, 1, ALM_OF_OK, now);              /* nothing yet: no event */
+    CHECK(status().fault == 0 && count_events(EVT_OUTPUT_OK) == 0);
+
+    alm_set_output_fault(&ctl, 1, 2, 1, ALM_OF_OPEN, now);            /* sounder cable cut */
+    alm_status_t s = status();
+    CHECK(s.fault == 1 && s.module_faults == 1 && s.buzzer && s.led_yellow_fault);
+    CHECK(!(s.relays & ALM_K3_FAULT_OK) && last_event_is(EVT_OUTPUT_FAULT));
+    alm_set_output_fault(&ctl, 1, 2, 1, ALM_OF_OPEN, now);            /* reported again: nothing new */
+    CHECK(count_events(EVT_OUTPUT_FAULT) == 1);
+    CHECK(alm_ack(&ctl, 1, now) > 0);
+    CHECK(!status().buzzer && status().fault == 1);                   /* quiet, still a fault */
+    alm_set_output_fault(&ctl, 1, 2, 1, ALM_OF_SHORT, now);           /* another kind: new fault */
+    CHECK(status().buzzer && status().fault == 1 && count_events(EVT_OUTPUT_FAULT) == 2);
+    alm_set_output_fault(&ctl, 1, 2, 1, ALM_OF_OK, now);              /* repaired */
+    s = status();
+    CHECK(s.fault == 0 && !s.buzzer && (s.relays & ALM_K3_FAULT_OK) && last_event_is(EVT_OUTPUT_OK));
+
+    alm_set_supply_low(&ctl, 1, 2, 1, now);
+    alm_set_supply_low(&ctl, 1, 2, 1, now);
+    CHECK(status().fault == 1 && status().buzzer && count_events(EVT_SUPPLY_LOW) == 1);
+    alm_set_output_fault(&ctl, 1, 2, 3, ALM_OF_OVERCURRENT, now);
+    CHECK(status().fault == 2);
+    alm_set_key(&ctl, 1);
+    alm_service(&ctl, 30, 1, now);                                    /* service: K3 stays OK (decided) */
+    CHECK((status().relays & ALM_K3_FAULT_OK) && status().fault == 2);
+    alm_service(&ctl, 0, 1, now);
+    /* the module disappears: it cannot report, so only "module missing" remains */
+    alm_set_module_lost(&ctl, 1, 2, 1, now);
+    CHECK(status().module_faults == 0 && status().fault >= 1);
+    alm_set_module_lost(&ctl, 1, 2, 0, now);
+    alm_set_supply_low(&ctl, 1, 2, 1, now);
+    alm_forget_module(&ctl, 2, now);                                  /* removed from the configuration */
+    CHECK(status().module_faults == 0);
+}
+
+static void test_lamptest(void)
+{
+    fresh();
+    alm_lamptest(&ctl, ALM_USER_SCREEN, now);
+    CHECK(status().lamptest && last_event_is(EVT_LAMPTEST));
+    CHECK(status().relays == ALM_K3_FAULT_OK || status().relays == 0);   /* relays untouched */
+    now += ALM_LAMPTEST_MS - 200u;
+    alm_tick(&ctl, now);
+    CHECK(status().lamptest);
+    now += 400u;
+    alm_tick(&ctl, now);
+    CHECK(!status().lamptest);
 }
 
 static void test_pending_left_and_condition(void)
@@ -554,9 +633,11 @@ int main(void)
     test_no_and_nc_contacts();
     test_reload_keeps_state_of_unchanged_points();
     test_hmi_lost_gives_fault_after_120_minutes();
-    test_sync_time_only_once_without_key();
+    test_pi_keeps_the_clock_right();
+    test_module_faults_sounder_line_and_supply();
+    test_lamptest();
     test_pending_left_and_condition();
     test_clock_and_uptime_survive_the_tick_wrap();
-    printf("%s: %d checks, %d failures (22 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
+    printf("%s: %d checks, %d failures (26 tests)\n", failures ? "FAILED" : "alarm tests passed", checks, failures);
     return failures ? 1 : 0;
 }

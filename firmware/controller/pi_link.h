@@ -16,7 +16,7 @@
 #include "pi_link_proto.h"
 
 #define PI_FW_MAJOR 0u
-#define PI_FW_MINOR 5u
+#define PI_FW_MINOR 6u
 
 typedef void (*pi_write_fn)(void *ctx, const uint8_t *data, uint16_t len);
 

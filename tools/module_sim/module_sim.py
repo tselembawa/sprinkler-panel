@@ -18,6 +18,7 @@
     r        επανεκκίνηση module (σαν να κόπηκε το ρεύμα του)
     s        σιωπή: το module σταματά να απαντά (δοκιμή «modul saknas») / ξανά
     v        χαμηλή τάση 24 V (13,0 V, κάτω από το όριο 14 V) / κανονική
+    o        γραμμή σειρήνας (έξοδος OUT1): OK -> κομμένη -> βραχυκύκλωμα -> OK
     q        έξοδος
 """
 
@@ -99,6 +100,7 @@ class Module:
         # physical contact states (what is wired on the "breadboard")
         self.contacts = [IN_CLOSED, IN_OPEN, IN_CLOSED, IN_CLOSED]
         self.supply_mv = 24000
+        self.out_line = [0, 0, 0, 0]     # line of each output: 0 OK, 1 open, 2 short (if supervised)
         self.silent = False
         self.power_on()
 
@@ -153,7 +155,7 @@ class Module:
         word = 0
         for n in range(4):
             mode = self.cfg[8 + n] & 0xFF
-            sup = 0 if mode == 2 else 4
+            sup = self.out_line[n] if mode == 2 else 4
             on = 8 if (mode != 0 and self.output_on(n)) else 0
             word |= (on | sup) << (4 * n)
         return word
@@ -363,6 +365,8 @@ class Module:
             extra.append("ΣΙΩΠΗ")
         if self.supply_mv < self.supply_low_mv():
             extra.append(f"τάση {self.supply_mv / 1000:.1f} V")
+        if self.out_line[0]:
+            extra.append("γραμμή σειρήνας " + ("ΚΟΜΜΕΝΗ" if self.out_line[0] == 1 else "ΒΡΑΧΥΚΥΚΛΩΜΑ"))
         if self.failsafe_active:
             extra.append("FAILSAFE")
         tail = f"  ({', '.join(extra)})" if extra else ""
@@ -556,6 +560,8 @@ def run(port, addresses, baud=38400, keys=True, modules=None, stop=None):
                     m.silent = not m.silent
                 elif k == "v":
                     m.supply_mv = 13000 if m.supply_mv >= m.supply_low_mv() else 24000
+                elif k == "o":
+                    m.out_line[0] = (m.out_line[0] + 1) % 3
                 elif k == "q":
                     break
                 print(modules[sel].describe())

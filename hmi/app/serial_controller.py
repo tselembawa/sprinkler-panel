@@ -24,8 +24,34 @@ from . import link_proto as L
 from . import protocol as P
 from .sim_controller import CommandError, ControllerUnavailable
 
+import shutil
+import subprocess
+
 ST_LINK_VID = 0x0483       # STMicroelectronics (the Nucleo's ST-LINK virtual COM port)
 CLOCK_VALID_FROM = 1577836800   # 2020-01-01: below this the controller clock was never set
+CLOCK_TOLERANCE_S = 3           # controller and Pi may differ this much before the Pi corrects it
+
+_ntp_checked = (0.0, True)
+
+
+def pi_clock_trusted() -> bool:
+    """Is the Pi's own clock right? The Pi has no battery clock: after a power cut without
+    network it starts with an old time until NTP answers. Only a synchronized clock may
+    correct a controller clock that is already set. (No timedatectl, e.g. a Windows PC: yes.)"""
+    global _ntp_checked
+    now = time.monotonic()
+    if now - _ntp_checked[0] < 60 and _ntp_checked[0]:
+        return _ntp_checked[1]
+    ok = True
+    if shutil.which("timedatectl"):
+        try:
+            out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"],
+                                 capture_output=True, text=True, timeout=3).stdout.strip()
+            ok = out != "no"
+        except (OSError, subprocess.SubprocessError):
+            ok = True
+    _ntp_checked = (now, ok)
+    return ok
 
 
 def find_port() -> str | None:
@@ -165,7 +191,9 @@ class SerialController:
     POINTS_PER_REQUEST = 50
     EVENTS_PER_REQUEST = 24
 
-    def __init__(self, link: SerialLink, store=None, start_seq: int = 0, wall=time.time):
+    def __init__(self, link: SerialLink, store=None, start_seq: int = 0, wall=time.time,
+                 clock_trusted=pi_clock_trusted):
+        self._clock_trusted = clock_trusted
         self._link = link
         self._store = store            # db with get_setting/set_setting, keeps the event offset
         self._wall = wall
@@ -237,6 +265,14 @@ class SerialController:
             except CommandError:
                 pass
             raw["clock_was_unset"] = True
+        elif abs(raw["time"] - self._wall()) > CLOCK_TOLERANCE_S and self._clock_trusted():
+            # the Pi keeps the controller's clock right (it drifts, or the Pi itself was wrong
+            # when it gave the time after a power cut)
+            try:
+                self._req(L.SET_TIME, struct.pack("<IBB", int(self._wall()), 0, 1))
+                raw = L.parse_status(self._req(L.GET_STATUS))
+            except CommandError:
+                pass                      # older firmware: the clock can only be set once
         if self._fw == "?":
             ping = self._req(L.PING)
             self._fw = f"{ping[1]}.{ping[2]}"
@@ -361,6 +397,10 @@ class SerialController:
             raise CommandError("BAD_LANGUAGE", str(lang))
         p = self._req(L.SET_LANGUAGE, bytes([L.LANGS.index(lang)]))
         return self._done({"language": L.LANGS[p[0]]})
+
+    def cmd_lamptest(self, user: int = 0) -> dict:
+        self._req(L.CMD_LAMPTEST, bytes([user & 0xFF]))
+        return self._done({"lamptest": True})
 
     # ------------------------------------------------------------- prototype only
     def dev_set_key(self, tech: bool):

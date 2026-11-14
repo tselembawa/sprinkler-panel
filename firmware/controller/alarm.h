@@ -67,10 +67,32 @@ typedef enum {
     EVT_ALARM_ON, EVT_ALARM_CLEARED, EVT_LINE_OPEN, EVT_LINE_SHORT, EVT_LINE_OK,
     EVT_MODULE_LOST, EVT_MODULE_BACK, EVT_ACK, EVT_RESET, EVT_SILENCE, EVT_UNSILENCE,
     EVT_RESOUND, EVT_SERVICE_ON, EVT_SERVICE_OFF, EVT_POINT_DISABLED, EVT_POINT_ENABLED,
-    EVT_TIME_SET, EVT_HMI_LOST, EVT_HMI_BACK, EVT_COUNT
+    EVT_TIME_SET, EVT_HMI_LOST, EVT_HMI_BACK,
+    /* module faults (review 2026-11-14): source = line*1000+module */
+    EVT_OUTPUT_FAULT,      /* supervised output line: old_v = ALM_OF_* kind, new_v = output 1..4 */
+    EVT_OUTPUT_OK,         /* new_v = output 1..4 */
+    EVT_SUPPLY_LOW, EVT_SUPPLY_OK,
+    EVT_LAMPTEST,
+    EVT_COUNT
 } alm_evtype_t;
 
 typedef enum { SRC_SYSTEM = 0, SRC_POINT, SRC_MODULE } alm_srckind_t;
+
+/* who did it (the "user" of an event): shown in the event list */
+#define ALM_USER_SYSTEM  0u   /* the panel itself */
+#define ALM_USER_PANEL   1u   /* a button on the panel */
+#define ALM_USER_SCREEN  2u   /* the touch screen of the panel */
+#define ALM_USER_REMOTE  3u   /* a browser on the network */
+
+/* fault of a supervised output line (same numbers as MB_OUT_SUP_*) */
+#define ALM_OF_OK          0u
+#define ALM_OF_OPEN        1u
+#define ALM_OF_SHORT       2u
+#define ALM_OF_OVERCURRENT 3u
+/* bits of a module's fault mask */
+#define ALM_MF_OUT(n)      ((uint8_t)(1u << (n)))   /* n = 0..3: output n+1 */
+#define ALM_MF_SUPPLY      0x10u
+#define ALM_LAMPTEST_MS    3000u
 
 typedef struct {
     uint32_t seq;
@@ -134,6 +156,8 @@ typedef struct {
     uint16_t lost_modules;
     uint8_t hmi_lost;              /* no contact with the Raspberry Pi */
     uint8_t no_config;             /* no configuration yet: the panel supervises nothing */
+    uint16_t module_faults;        /* output line faults + low supply (part of `fault`) */
+    uint8_t lamptest;              /* lamp test running: all LEDs and the buzzer on */
 } alm_status_t;
 
 typedef struct {
@@ -148,6 +172,13 @@ typedef struct {
     uint8_t lost_unacked[(ALM_MAX_ADDR + 8u) / 8u]; /* ... and not acknowledged yet */
     uint8_t lost_line[ALM_MAX_ADDR + 1u];
     uint16_t lost_count;
+    /* faults reported by a module itself: supervised output lines, low supply */
+    uint8_t mod_fault[ALM_MAX_ADDR + 1u];          /* ALM_MF_* bits */
+    uint8_t mod_unacked[ALM_MAX_ADDR + 1u];        /* ... not acknowledged yet */
+    uint8_t out_kind[ALM_MAX_ADDR + 1u][4];        /* ALM_OF_* of each output */
+    uint16_t mod_fault_count;
+    uint32_t lamptest_until_ms;
+    uint8_t lamptest;
 
     uint8_t key_tech, silenced, service_active;
     uint32_t service_until_ms;
@@ -189,6 +220,12 @@ uint32_t alm_config_crc(const alm_point_cfg_t *pts, uint16_t n);
 /* From the module protocol: input value (MB_IN_*) of module `addr` input `channel` (1..4). */
 void alm_set_input(alm_t *a, uint8_t line, uint8_t addr, uint8_t channel, uint8_t mb_in, uint32_t now_ms);
 void alm_set_module_lost(alm_t *a, uint8_t line, uint8_t addr, int lost, uint32_t now_ms);
+/* From the module: supervision of output `out` (1..4), kind = ALM_OF_* (0 = OK), and the supply
+   voltage. Call as often as you like: only a change does something. */
+void alm_set_output_fault(alm_t *a, uint8_t line, uint8_t addr, uint8_t out, uint8_t kind, uint32_t now_ms);
+void alm_set_supply_low(alm_t *a, uint8_t line, uint8_t addr, int low, uint32_t now_ms);
+/* A module is no longer in the configuration: forget its faults. */
+void alm_forget_module(alm_t *a, uint8_t addr, uint32_t now_ms);
 void alm_set_key(alm_t *a, int tech);
 /* Contact with the Raspberry Pi lost / back (decided: event at once, system fault after 120 min,
    not in service mode). */
@@ -203,9 +240,13 @@ alm_result_t alm_silence(alm_t *a, int silence, uint8_t user, uint32_t now_ms);
 alm_result_t alm_service(alm_t *a, uint16_t minutes, uint8_t user, uint32_t now_ms);
 alm_result_t alm_disable(alm_t *a, uint16_t point_id, int disabled, uint8_t user, uint32_t now_ms);
 alm_result_t alm_set_time(alm_t *a, uint32_t unix_time, uint8_t user, uint32_t now_ms);
-/* Set the clock without the key, only while it has never been set (no RTC yet: after power-up
-   the Pi gives the time). Returns ALM_ACCESS_DENIED if the clock is already valid. */
+/* The Pi keeps the controller's clock right (decided 2026-11-14): without the key, at any time.
+   A difference of 2 s or less is left alone; a correction below ALM_TIME_LOG_S is not put in the
+   event log (the controller's own clock drifts a little all the time). */
+#define ALM_TIME_LOG_S 60u
 alm_result_t alm_sync_time(alm_t *a, uint32_t unix_time, uint32_t now_ms);
+/* All LEDs and the buzzer on for ALM_LAMPTEST_MS; relays and sounders are not touched. */
+void alm_lamptest(alm_t *a, uint8_t user, uint32_t now_ms);
 
 void alm_status(const alm_t *a, uint32_t now_ms, alm_status_t *s);
 uint32_t alm_time(const alm_t *a, uint32_t now_ms);

@@ -12,7 +12,8 @@ enum { R_FIRE = 0, R_FAULT, R_B, R_PENDING, R_C, R_DRIFT, R_OFF, R_COUNT, R_NONE
 enum {
     T_TITLE, T_NORMAL, T_SERVICE, T_NO_TIME, T_NO_CONFIG, T_HMI_LOST,
     T_FIRE, T_FAULT, T_B, T_PENDING, T_C, T_DRIFT, T_OFF,
-    T_UNACKED, T_ACKED, T_LATCHED, T_OPEN, T_SHORT, T_MODULE_LOST, T_DELAY, T_ACTIVE, T_COUNT
+    T_UNACKED, T_ACKED, T_LATCHED, T_OPEN, T_SHORT, T_MODULE_LOST, T_DELAY, T_ACTIVE,
+    T_OUTPUT, T_SUPPLY_LOW, T_OVERCURRENT, T_LAMPTEST, T_COUNT
 };
 
 static const char *const texts[LANG_COUNT][T_COUNT] = {
@@ -20,38 +21,45 @@ static const char *const texts[LANG_COUNT][T_COUNT] = {
                  "INGEN KONFIGURATION", "PANEL (HMI) SAKNAS",
                  "BRANDLARM", "FEL", "B-LARM", "FÖRDRÖJNING", "C-LARM", "DRIFT", "FRÅNKOPPLAD",
                  "EJ KVITTERAD", "KVITTERAD", "ÅTERSTÄLL MED NYCKEL", "AVBROTT", "KORTSLUTNING",
-                 "MODUL SAKNAS", "LARM OM %ld S", "AKTIV"},
+                 "MODUL SAKNAS", "LARM OM %ld S", "AKTIV",
+                 "LARMDON UTGÅNG %ld", "LÅG MATNINGSSPÄNNING", "ÖVERSTRÖM", "LAMPTEST"},
     [LANG_EN] = {"SPRINKLER PANEL", "NORMAL OPERATION", "SERVICE %ld MIN LEFT", "TIME NOT SET",
                  "NO CONFIGURATION", "PANEL (HMI) MISSING",
                  "FIRE ALARM", "FAULT", "B ALARM", "DELAY", "C ALARM", "OPERATION", "DISABLED",
                  "NOT ACKNOWLEDGED", "ACKNOWLEDGED", "RESET WITH KEY", "OPEN CIRCUIT", "SHORT CIRCUIT",
-                 "MODULE MISSING", "ALARM IN %ld S", "ACTIVE"},
+                 "MODULE MISSING", "ALARM IN %ld S", "ACTIVE",
+                 "SOUNDER OUTPUT %ld", "LOW SUPPLY VOLTAGE", "OVERCURRENT", "LAMP TEST"},
     [LANG_FI] = {"SPRINKLERKESKUS", "NORMAALI TILA", "HUOLTO %ld MIN", "AIKAA EI ASETETTU",
                  "EI KONFIGURAATIOTA", "HMI-PANEELI PUUTTUU",
                  "PALOHÄLYTYS", "VIKA", "B-HÄLYTYS", "VIIVE", "C-HÄLYTYS", "KÄYNTI", "POIS KYTKETTY",
                  "KUITTAAMATTA", "KUITATTU", "PALAUTA AVAIMELLA", "KATKOS", "OIKOSULKU",
-                 "MODUULI PUUTTUU", "HÄLYTYS %ld S", "AKTIIVINEN"},
+                 "MODUULI PUUTTUU", "HÄLYTYS %ld S", "AKTIIVINEN",
+                 "HÄLYTINLÄHTÖ %ld", "ALHAINEN SYÖTTÖJÄNN.", "YLIVIRTA", "LAMPPUTESTI"},
     [LANG_NO] = {"SPRINKLERSENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN IGJ.", "TID IKKE STILT",
                  "INGEN KONFIGURASJON", "PANEL (HMI) MANGLER",
                  "BRANNALARM", "FEIL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
                  "IKKE KVITTERT", "KVITTERT", "NULLSTILL MED NØKKEL", "BRUDD", "KORTSLUTNING",
-                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV"},
+                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV",
+                 "ALARMUTGANG %ld", "LAV FORSYNINGSSPENN.", "OVERSTRØM", "LAMPETEST"},
     [LANG_DA] = {"SPRINKLERCENTRAL", "NORMAL DRIFT", "SERVICE %ld MIN", "TID IKKE INDSTILLET",
                  "INGEN KONFIGURATION", "PANEL (HMI) MANGLER",
                  "BRANDALARM", "FEJL", "B-ALARM", "FORSINKELSE", "C-ALARM", "DRIFT", "FRAKOBLET",
                  "IKKE KVITTERET", "KVITTERET", "NULSTIL MED NØGLE", "AFBRYDELSE", "KORTSLUTNING",
-                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV"},
+                 "MODUL MANGLER", "ALARM OM %ld S", "AKTIV",
+                 "ALARMUDGANG %ld", "LAV FORSYNINGSSPÆND.", "OVERSTRØM", "LAMPETEST"},
     [LANG_EL] = {"ΠΙΝΑΚΑΣ SPRINKLER", "ΚΑΝΟΝΙΚΗ ΛΕΙΤΟΥΡΓΙΑ", "SERVICE %ld ΛΕΠΤΑ", "ΔΕΝ ΕΧΕΙ ΟΡΙΣΤΕΙ ΩΡΑ",
                  "ΔΕΝ ΥΠΑΡΧΟΥΝ ΣΗΜΕΙΑ", "HMI ΕΚΤΟΣ ΣΥΝΔΕΣΗΣ",
                  "ΠΥΡΚΑΓΙΑ", "ΣΦΑΛΜΑ", "ΣΥΝΑΓΕΡΜΟΣ B", "ΚΑΘΥΣΤΕΡΗΣΗ", "ΣΥΝΑΓΕΡΜΟΣ C", "ΛΕΙΤΟΥΡΓΙΑ",
                  "ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ", "ΔΕΝ ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΑΝΑΓΝΩΡΙΣΤΗΚΕ", "ΕΠΑΝΑΦΟΡΑ ΜΕ ΚΛΕΙΔΙ",
-                 "ΔΙΑΚΟΠΗ", "ΒΡΑΧΥΚΥΚΛΩΜΑ", "ΑΠΩΛΕΙΑ MODULE", "ΣΥΝΑΓΕΡΜΟΣ ΣΕ %ld S", "ΕΝΕΡΓΟ"},
+                 "ΔΙΑΚΟΠΗ", "ΒΡΑΧΥΚΥΚΛΩΜΑ", "ΑΠΩΛΕΙΑ MODULE", "ΣΥΝΑΓΕΡΜΟΣ ΣΕ %ld S", "ΕΝΕΡΓΟ",
+                 "ΕΞΟΔΟΣ ΣΕΙΡΗΝΑΣ %ld", "ΧΑΜΗΛΗ ΤΑΣΗ", "ΥΠΕΡΕΝΤΑΣΗ", "ΔΟΚΙΜΗ ΛΥΧΝΙΩΝ"},
     /* Russian: words chosen so that one screen needs at most 8 letters of our own */
     [LANG_RU] = {"ПУЛЬТ СПРИНКЛЕРА", "НОРМАЛЬНАЯ РАБОТА", "СЕРВИС: %ld МИН", "ВРЕМЯ НЕ УСТАНОВЛЕНО",
                  "НЕТ ТОЧЕК", "НЕТ СВЯЗИ С HMI",
                  "ПОЖАР", "НЕИСПРАВНОСТЬ", "ТРЕВОГА B", "ЗАДЕРЖКА", "ТРЕВОГА C", "РАБОТА", "ОТКЛЮЧЕНО",
                  "НЕ КВИТИРОВАНО", "КВИТИРОВАНО", "СБРОС КЛЮЧОМ", "ОБРЫВ", "КОРОТКОЕ ЗАМЫКАНИЕ",
-                 "НЕТ МОДУЛЯ", "ТРЕВОГА ЧЕРЕЗ %ld С", "АКТИВНО"},
+                 "НЕТ МОДУЛЯ", "ТРЕВОГА ЧЕРЕЗ %ld С", "АКТИВНО",
+                 "ВЫХОД СИРЕНЫ %ld", "НИЗКОЕ НАПРЯЖЕНИЕ", "ПЕРЕГРУЗКА", "ТЕСТ ЛАМП"},
 };
 
 /* Greek capitals U+0391..U+03A9: the Latin look-alike, or a letter of our own */
@@ -146,7 +154,13 @@ static uint8_t rank_of(const alm_t *a, uint16_t i, uint8_t *unacked)
     return R_NONE;
 }
 
-/* the k-th item in display order; returns the point index or -1. *count = all items */
+/* A module's own fault as an item: -(2 + address * 8 + bit), bit 0..3 = output, 4 = supply */
+#define MF_ITEM(addr, bit) (-(2 + (int)(addr) * 8 + (int)(bit)))
+#define MF_ADDR(it)        ((uint8_t)((-(it) - 2) / 8))
+#define MF_BIT(it)         ((uint8_t)((-(it) - 2) % 8))
+
+/* the k-th item in display order; returns the point index (>= 0), a module fault (<= -2) or -1.
+   *count = all items */
 static int item(const alm_t *a, uint16_t k, uint16_t *count)
 {
     int found = -1;
@@ -160,6 +174,21 @@ static int item(const alm_t *a, uint16_t k, uint16_t *count)
                         found = (int)i;
                     }
                     seen++;
+                }
+            }
+            if (r != R_FAULT || a->mod_fault_count == 0u) {
+                continue;
+            }
+            /* the modules' own faults: with the other faults */
+            for (uint16_t addr = 1; addr <= ALM_MAX_ADDR; addr++) {
+                for (uint8_t b = 0; a->mod_fault[addr] && b < 5u; b++) {
+                    const uint8_t bit = (uint8_t)(1u << b);
+                    if ((a->mod_fault[addr] & bit) && !(a->mod_unacked[addr] & bit) == !want_unacked) {
+                        if (seen == k) {
+                            found = MF_ITEM(addr, b);
+                        }
+                        seen++;
+                    }
                 }
             }
         }
@@ -319,6 +348,16 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint8_t lang, uint32_t now_m
     for (uint8_t r = 0; r < LCD_ROWS; r++) {
         rows[r][0] = '\0';
     }
+    if (a->lamptest && (int32_t)(now_ms - a->lamptest_until_ms) < 0) {
+        char tmp[64];
+        tx(tmp, sizeof(tmp), lang, T_LAMPTEST, 0);
+        memset(rows[0], '#', LCD_COLS);
+        rows[0][LCD_COLS] = '\0';
+        memcpy(rows[3], rows[0], LCD_COLS + 1u);
+        put(rows[1], tmp);
+        put(rows[2], "####################");
+        return;
+    }
     uint16_t count;
     int first = item(a, 0, &count);
     if (count == 0) {
@@ -326,7 +365,7 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint8_t lang, uint32_t now_m
         quiet_screen(a, lang, now_ms, rows);
         return;
     }
-    uint16_t first_id = a->cfg[first].id;
+    uint16_t first_id = first >= 0 ? a->cfg[first].id : (uint16_t)(60000 - first);
     if (count != v->count || first_id != v->first_id) {
         /* something new or something gone: start again from the most important */
         v->count = count;
@@ -342,18 +381,40 @@ void lcd_view_render(lcd_view_t *v, const alm_t *a, uint8_t lang, uint32_t now_m
     }
     uint16_t dummy;
     int i = item(a, v->index, &dummy);
-    if (i < 0) {
+    if (i == -1) {
         i = first;
+    }
+    char nn[12] = "";
+    if (count > 1u) {
+        snprintf(nn, sizeof(nn), "%u/%u", (unsigned)(v->index + 1u), (unsigned)count);
+    }
+    if (i < 0) {
+        /* a module's own fault: which output / the supply, what is wrong, where */
+        const uint8_t addr = MF_ADDR(i), b = MF_BIT(i);
+        char label[64], tmp[64], where[16];
+        tx(label, sizeof(label), lang, T_FAULT, 0);
+        put_lr(rows[0], label, nn);
+        if (b < 4u) {
+            tx(tmp, sizeof(tmp), lang, T_OUTPUT, (long)(b + 1u));
+            put(rows[1], tmp);
+            const uint8_t kind = a->out_kind[addr][b];
+            tx(tmp, sizeof(tmp), lang, kind == ALM_OF_SHORT ? T_SHORT :
+                                       kind == ALM_OF_OVERCURRENT ? T_OVERCURRENT : T_OPEN, 0);
+            put(rows[2], tmp);
+        } else {
+            tx(tmp, sizeof(tmp), lang, T_SUPPLY_LOW, 0);
+            put(rows[1], tmp);
+        }
+        snprintf(where, sizeof(where), "L%u-M%02u", a->lost_line[addr], addr);
+        tx(tmp, sizeof(tmp), lang, (a->mod_unacked[addr] & (1u << b)) ? T_UNACKED : T_ACKED, 0);
+        put_lr(rows[3], where, tmp);        /* the place always; the state when there is room */
+        return;
     }
     const alm_point_cfg_t *c = &a->cfg[i];
     const alm_point_rt_t *rt = &a->rt[i];
     uint8_t unacked;
     uint8_t r = rank_of(a, (uint16_t)i, &unacked);
 
-    char nn[12] = "";
-    if (count > 1u) {
-        snprintf(nn, sizeof(nn), "%u/%u", (unsigned)(v->index + 1u), (unsigned)count);
-    }
     char label[64];
     tx(label, sizeof(label), lang, label_t(r), 0);
     put_lr(rows[0], label, nn);
