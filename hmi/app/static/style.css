@@ -455,6 +455,11 @@ main { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overscroll-behavio
 #view-points.active, #view-events.active { display: flex; flex-direction: column; height: 100%; }
 #view-points .toolbar, #view-events .toolbar, #view-points .point-form { flex: none; }
 #view-points .table-wrap, #view-events .table-wrap { flex: 1; min-height: 0; overflow: auto; margin-bottom: 0; }
+/* Modules and Settings: the same, with the blue rail when there is more below */
+#view-modules.active, #view-settings.active { display: flex; flex-direction: column; height: 100%; }
+#view-modules > .hint, #view-settings .settings-lock { flex: none; }
+#view-modules .table-wrap { flex: 1; min-height: 0; overflow: auto; margin-bottom: 0; }
+#view-settings .grid-settings { flex: 1; min-height: 0; overflow-y: auto; align-content: start; overscroll-behavior: contain; }
 .table th { z-index: 1; }
 
 @media (max-width: 900px) {

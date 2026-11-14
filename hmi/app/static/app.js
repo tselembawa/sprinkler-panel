@@ -1231,6 +1231,7 @@ function attachRail(el, itemSel) {
 
   const max = () => el.scrollHeight - el.clientHeight;
   function label() {
+    if (!itemSel) return "";                 // (settings: cards side by side, no "1–3 / 6")
     const items = el.querySelectorAll(itemSel);
     if (!items.length) return "";
     const top = el.getBoundingClientRect().top, bottom = top + el.clientHeight;
@@ -1316,8 +1317,9 @@ function attachRail(el, itemSel) {
 }
 
 attachRail($("#active-list"), ".alarm-row");
-document.querySelectorAll("#view-points .table-wrap, #view-events .table-wrap")
+document.querySelectorAll("#view-points .table-wrap, #view-events .table-wrap, #view-modules .table-wrap")
   .forEach((w) => attachRail(w, "tbody tr"));
+attachRail($("#view-settings .grid-settings"), null);
 
 async function start() {
   L.dict = await api("/i18n.json");
