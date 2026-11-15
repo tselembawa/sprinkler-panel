@@ -17,6 +17,9 @@ controller/   Main Controller (NUCLEO-G0B1RE)
   state_store.c/.h   Service και frånkopplade σημεία στο flash (2 σελίδες σαν «ημερολόγιο»)
   panel_io.c/.h      Έξοδοι του πίνακα: ρελέ K1–K4, 6 LED (με αναβόσβημα), βομβητής με ρυθμό A/B/Fel
   app.c/.h           Modules → συναγερμοί → ρελέ/LED/βομβητής/σειρήνες, σύνδεση με το Pi, LCD, watchdog
+module/       I/O module 4/4 (NUCLEO-G031K8, βλ. docs/module-prototype.md)
+  mod_core.c/.h      Ό,τι αποφασίζει το module: Modbus slave (χάρτης v1), είσοδοι, έξοδοι, failsafe
+  mod_app.c/.h       Η πλευρά του STM32: ADC, pins, DIP, RS485, watchdog
 tests/        Δοκιμές στο PC (gcc)
   test_alarm.c       Τα tests του εικονικού controller + τα νέα, για τη C έκδοση
   host_hal/          Μικρό «ψεύτικο» HAL: τρέχει όλο το app.c στο PC
