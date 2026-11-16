@@ -3,7 +3,7 @@ qty;value;refs;footprint
 6;100nF;C2 C5 C6 C7 C8 C9;C_Disc_D5.0mm_W2.5mm_P5.00mm
 1;1N5819;D1;D_DO-41_SOD81_P10.16mm_Horizontal
 1;P6KE36A;D2;D_DO-15_P12.70mm_Horizontal
-2;P6KE10CA;D3 D4;D_DO-15_P5.08mm_Vertical_KathodeUp
+2;P6KE10CA;D3 D4;D_DO-15_P5.08mm_Vertical_CathodeUp
 4;LED red 3mm;D5 D6 D7 D8;LED_D3.0mm
 8;LED yellow 2x5mm;D9 D10 D11 D12 D13 D14 D15 D16;LED_Rectangular_W5.0mm_H2.0mm
 1;LED green (24V);D17;LED_D3.0mm

@@ -78,7 +78,7 @@ def place_fp(text, p, nets):
     r = p["rot"]
     lines = text.strip().splitlines()
     head = re.match(r"\(module (\S+) (.*)", lines[0])
-    out = [f"  (module {p['fp']} {head.group(2)}".rstrip() + f" (tstamp {stamp(p['ref'])})"]
+    out = [f"  (module {RENAMED.get(p['fp'], p['fp'])} {head.group(2)}".rstrip() + f" (tstamp {stamp(p['ref'])})"]
     out.append(f"    (at {OX + x:.3f} {OY + y:.3f}{' ' + str(r) if r else ''})")
     out.append(f"    (path /{stamp(p['ref'])})")
     for ln in lines[1:]:
@@ -122,6 +122,8 @@ def check_nets():
 
 # ---------------------------------------------------------------- PCB ------------------------
 SILK = []
+# names that changed in the KiCad libraries after the copy the footprints are read from
+RENAMED = {"Diode_THT:D_DO-15_P5.08mm_Vertical_KathodeUp": "Diode_THT:D_DO-15_P5.08mm_Vertical_CathodeUp"}
 
 
 def write_pcb(lib_root):
@@ -144,6 +146,8 @@ def write_pcb(lib_root):
             if num and num not in p["pads"] and p["kind"] != "hole":
                 raise SystemExit(f"{p['ref']}: pad {num} not in parts.py")
         mods.append(place_fp(text, p, p["pads"]))
+    for p in PARTS:
+        p["fp"] = RENAMED.get(p["fp"], p["fp"])
 
     w, h = BOARD_W, BOARD_H
     edge = [(0, 0, w, 0), (w, 0, w, h), (w, h, 0, h), (0, h, 0, 0)]
