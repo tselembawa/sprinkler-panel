@@ -1,5 +1,5 @@
 /*
- * I/O module on the NUCLEO-G031K8 (breadboard prototype): the STM32 side.
+ * I/O module on the NUCLEO-G031K8 (breadboard, or the PCB v1 with MOD_BOARD_PCB_V1): the STM32 side.
  * Measures, switches pins, moves bytes. Everything the module decides is in mod_core.c.
  *
  * CubeMX (project "Module"): USART1 on PB6/PB7, Asynchronous, 38400 8N1, NVIC "USART1 global
@@ -27,11 +27,22 @@
 extern UART_HandleTypeDef huart1;      /* RS485 */
 extern UART_HandleTypeDef huart2;      /* ST-LINK: log text for PuTTY */
 
+/* 0 = breadboard (RS485 module with automatic direction, no 24 V divider)
+ * 1 = PCB v1 (hardware/module-v1): MAX3485 with DE/RE on A5, 24 V divider on A6 after the diode */
+#define MOD_BOARD_PCB_V1   0
+
 #define R_REF_OHM          1000u       /* resistor from 3V3 to each input pin */
-#define MOD_SUPPLY_RTOP    0u          /* 100000u when the 24 V divider is fitted */
 #define MOD_SUPPLY_RBOT    10000u
+#if MOD_BOARD_PCB_V1
+#define MOD_SUPPLY_RTOP    100000u
+#define MOD_SUPPLY_DIODE_MV 350u       /* 1N5819 in front of the divider */
+#define MOD_DE_PIN         GPIO_PIN_11 /* A5 (PA11) to DE and /RE */
+#else
+#define MOD_SUPPLY_RTOP    0u          /* 0 = not fitted: the module reports 24.0 V */
+#define MOD_SUPPLY_DIODE_MV 0u
 /* #define MOD_DE_PIN  GPIO_PIN_11       RS485 module with DE/RE (MAX485): A5 (PA11). The
                                          modules with automatic direction need nothing. */
+#endif
 #define WATCHDOG_MS        1000u
 
 typedef struct {
@@ -158,7 +169,7 @@ static void measure(uint32_t now)
     uint16_t supply = 24000u;
     if (MOD_SUPPLY_RTOP) {
         uint32_t pin_mv = (uint32_t)adc_avg(CH_SUPPLY) * vdda_mv / 4095u;
-        supply = (uint16_t)(pin_mv * (MOD_SUPPLY_RTOP + MOD_SUPPLY_RBOT) / MOD_SUPPLY_RBOT);
+        supply = (uint16_t)(pin_mv * (MOD_SUPPLY_RTOP + MOD_SUPPLY_RBOT) / MOD_SUPPLY_RBOT + MOD_SUPPLY_DIODE_MV);
     }
     uint8_t bad = vdda_mv < 2900u || vdda_mv > 3600u;           /* 3.3 V supply out of limits */
     mod_set_supply(&mod, supply, (int16_t)t10, bad);
