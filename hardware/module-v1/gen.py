@@ -12,7 +12,7 @@ import re
 import sys
 import uuid
 
-from parts import BOARD_W, BOARD_H, PARTS, POWER_NETS
+from parts import BOARD_W, BOARD_H, PARTS, POWER_NETS, BUS_NETS
 
 for _p in PARTS:
     _p["pads"] = {str(k): v for k, v in _p["pads"].items()}
@@ -21,6 +21,15 @@ for _p in PARTS:
 HERE = os.path.dirname(os.path.abspath(__file__))
 OX, OY = 50.0, 50.0                         # board position on the KiCad page
 NS = uuid.UUID("6f1c3a2e-6d53-4f6b-9a55-1b2f0c9e7a10")
+
+
+def stamp(ref):
+    """8 hex digits: footprint timestamp in the board, last part of the symbol uuid in the schematic"""
+    return uuid.uuid5(NS, "stamp/" + ref).hex[:8].upper()
+
+
+def sym_uuid(ref):
+    return "00000000-0000-0000-0000-0000" + stamp(ref).lower()
 
 
 def uid(*k):
@@ -69,8 +78,9 @@ def place_fp(text, p, nets):
     r = p["rot"]
     lines = text.strip().splitlines()
     head = re.match(r"\(module (\S+) (.*)", lines[0])
-    out = [f"  (module {p['fp']} {head.group(2)}".rstrip()]
+    out = [f"  (module {p['fp']} {head.group(2)}".rstrip() + f" (tstamp {stamp(p['ref'])})"]
     out.append(f"    (at {OX + x:.3f} {OY + y:.3f}{' ' + str(r) if r else ''})")
+    out.append(f"    (path /{stamp(p['ref'])})")
     for ln in lines[1:]:
         ln = ln.replace("REF**", p["ref"])
         if ln.strip().startswith("(fp_text value"):
@@ -111,6 +121,9 @@ def check_nets():
 
 
 # ---------------------------------------------------------------- PCB ------------------------
+SILK = []
+
+
 def write_pcb(lib_root):
     mods, boxes, render = [], [], []
     for p in PARTS:
@@ -136,26 +149,44 @@ def write_pcb(lib_root):
     edge = [(0, 0, w, 0), (w, 0, w, h), (w, h, 0, h), (0, h, 0, 0)]
     gr = [f"  (gr_line (start {OX + a} {OY + b}) (end {OX + c} {OY + d}) (layer Edge.Cuts) (width 0.1))"
           for a, b, c, d in edge]
-    texts = [("SPRINKLER I/O 4/4 v1", 50, 99.0, "B.SilkS"), ("USB", 49.5, 3.2, "F.SilkS"),
-             ("NUCLEO-G031K8", 49.5, 30.0, "F.SilkS"), ("max 30V / 2A", 50, 87.3, "F.SilkS"),
-             ("DIP: ON = 1", 79.0, 69.0, "F.SilkS"), ("TERM", 91.4, 34.9, "F.SilkS")]
-    for s, a, b, layer in texts:
+    texts = [("SPRINKLER I/O 4/4 v1", 50, 99.0, "B.SilkS", 1.2), ("USB", 49.5, 3.2, "F.SilkS", 1.2),
+             ("NUCLEO-G031K8", 49.5, 30.0, "F.SilkS", 1.2), ("D1", 38.7, 12.7, "F.SilkS", 0.9),
+             ("VIN", 60.9, 12.7, "F.SilkS", 0.9), ("DIP: ON = 1", 79.0, 68.45, "F.SilkS", 0.9),
+             ("TERM", 91.4, 34.9, "F.SilkS", 0.9), ("BUS IN", 19.4, 13.6, "F.SilkS", 0.8),
+             ("BUS OUT", 81.7, 12.9, "B.SilkS", 0.8)]
+    for x0 in (27.0, 89.3):                                   # bus terminals, pin 1 on the right
+        for i, name in enumerate(("24V", "0V", "A", "B")):
+            texts.append((name, x0 - 5.08 * i, 12.0, "F.SilkS", 0.8))
+    for n in range(4):                                        # inputs
+        texts.append((f"IN{n + 1}", 13.2, 17.0 + 10.16 * n, "F.SilkS", 0.8))
+        texts.append(("0V", 13.2, 22.08 + 10.16 * n, "F.SilkS", 0.8))
+    for k in range(4):                                        # relay terminals
+        x0 = 9.0 + 21.0 * k + 10.05 - 5.08
+        for i, name in enumerate(("C", "NO", "NC")):
+            texts.append((name, x0 + 5.08 * i, 87.2, "F.SilkS", 0.9))
+        if k < 3:
+            texts.append(("30V 2A", x0 + 15.6, 87.2, "F.SilkS", 0.8))
+    SILK[:] = [t for t in texts if t[3] == 'F.SilkS']
+    for s, a, b, layer, size in texts:
         mirror = " (justify mirror)" if layer.startswith("B") else ""
         gr.append(f'  (gr_text "{s}" (at {OX + a} {OY + b}) (layer {layer}) '
-                  f'(effects (font (size 1.2 1.2) (thickness 0.2)){mirror}))')
+                  f'(effects (font (size {size} {size}) (thickness {0.15 if size < 1.2 else 0.2})){mirror}))')
     # Nucleo outline on the silkscreen so it goes in the right way round
     nx0, nx1, ny0, ny1 = 40.5, 58.6, 6.0, 53.5
     for a, b, c, d in [(nx0, ny0, nx1, ny0), (nx1, ny0, nx1, ny1), (nx1, ny1, nx0, ny1), (nx0, ny1, nx0, ny0)]:
         gr.append(f"  (gr_line (start {OX + a} {OY + b}) (end {OX + c} {OY + d}) (layer F.SilkS) (width 0.15))")
 
     nets = "\n".join(f"  (net {NET_ID[n]} {q(n)})" for n in ALL_NETS)
-    sig = [n for n in ALL_NETS if n not in POWER_NETS]
+    sig = [n for n in ALL_NETS if n not in POWER_NETS and n not in BUS_NETS]
+    bus = [n for n in ALL_NETS if n in BUS_NETS]
     pwr = [n for n in ALL_NETS if n in POWER_NETS]
     netclass = (
         '  (net_class Default "Signals"\n    (clearance 0.25) (trace_width 0.3) (via_dia 0.8) (via_drill 0.4)\n'
         '    (uvia_dia 0.3) (uvia_drill 0.1)\n' + "".join(f"    (add_net {q(n)})\n" for n in sig) + "  )\n"
         '  (net_class Power "24V, 5V, GND and relay contacts"\n    (clearance 0.4) (trace_width 1.0) (via_dia 1.2) (via_drill 0.6)\n'
-        '    (uvia_dia 0.3) (uvia_drill 0.1)\n' + "".join(f"    (add_net {q(n)})\n" for n in pwr) + "  )")
+        '    (uvia_dia 0.3) (uvia_drill 0.1)\n' + "".join(f"    (add_net {q(n)})\n" for n in pwr) + "  )\n"
+        '  (net_class Bus "24 V through to the next module"\n    (clearance 0.4) (trace_width 2.0) (via_dia 1.6) (via_drill 0.8)\n'
+        '    (uvia_dia 0.3) (uvia_drill 0.1)\n' + "".join(f"    (add_net {q(n)})\n" for n in bus) + "  )")
     zone = (f"  (zone (net {NET_ID['GND']}) (net_name GND) (layer B.Cu) (tstamp 0) (hatch edge 0.508)\n"
             "    (connect_pads (clearance 0.4)) (min_thickness 0.254)\n"
             "    (fill (arc_segments 32) (thermal_gap 0.5) (thermal_bridge_width 0.6))\n"
@@ -242,6 +273,8 @@ def render_png(render, boxes, path):
         xs = [x for _, x, *_ in pads] or [p["at"][0]]
         ys = [y for _, _, y, *_ in pads] or [p["at"][1]]
         d.text(T(sum(xs) / len(xs) - 1.5, sum(ys) / len(ys) - 1), p["ref"], fill=(255, 255, 255), font=font)
+    for t, a, b, _, size in SILK:
+        d.text(T(a - len(t) * size * 0.4, b - size * 0.7), t, fill=(255, 255, 120), font=font)
     img.save(path)
 
 
@@ -344,7 +377,7 @@ def write_sch():
     )''')
             ref_y = sy - hh - 1.5
             insts.append(f'''  (symbol (lib_id "{lib_id}") (at {sx:.2f} {sy:.2f} 0) (unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
-    (uuid "{uid("sym", p["ref"])}")
+    (uuid "{sym_uuid(p["ref"])}")
     (property "Reference" "{p["ref"]}" (at {sx + 3:.2f} {ref_y:.2f} 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Value" "{p["value"]}" (at {sx + 3:.2f} {ref_y + 1.6 + 2 * hh + 1.5:.2f} 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "{p["fp"]}" (at {sx:.2f} {sy:.2f} 0) (effects (font (size 1.27 1.27)) hide))
@@ -380,7 +413,7 @@ def write_sch():
     )''')
         sx, sy = 400 + 10 * i, 395
         insts.append(f'''  (symbol (lib_id "mod:hole") (at {sx} {sy} 0) (unit 1) (exclude_from_sim yes) (in_bom no) (on_board yes) (dnp no)
-    (uuid "{uid("sym", p["ref"])}")
+    (uuid "{sym_uuid(p["ref"])}")
     (property "Reference" "{p["ref"]}" (at {sx} {sy - 3} 0) (effects (font (size 1.27 1.27))))
     (property "Value" "M3" (at {sx} {sy + 3} 0) (effects (font (size 1.27 1.27))))
     (property "Footprint" "{p["fp"]}" (at {sx} {sy} 0) (effects (font (size 1.27 1.27)) hide))

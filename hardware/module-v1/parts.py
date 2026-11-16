@@ -64,8 +64,8 @@ part("X2", "BUS OUT", "conn", "TB4", (89.3, 5.6), 180, {1: "VBUS", 2: "GND", 3: 
 
 part("F1", "PTC 0.25A 60V (0ZRE0025FF)", "fuse", "PTC", (64.8, 15.2), 0, {1: "VBUS", 2: "VBUS_F"}, block="Power")
 part("D1", "1N5819", "diode", "DO41", (84.0, 15.2), 180, {1: "V24", 2: "VBUS_F"}, block="Power")
-part("C1", "47uF 50V", "cpol", "CP8", (89.0, 16.2), 0, {1: "V24", 2: "GND"}, block="Power")
-part("D2", "P6KE33A", "diode", "DO15", (64.8, 21.6), 0, {1: "V24", 2: "GND"}, block="Power")
+part("C1", "47uF 50V", "cpol", "CP8", (89.0, 17.0), 0, {1: "V24", 2: "GND"}, block="Power")
+part("D2", "P6KE36A", "diode", "DO15", (64.8, 21.6), 0, {1: "V24", 2: "GND"}, block="Power")
 part("U1", "TSR 1-2450 (24V->5V)", "dcdc", "DCDC", (84.0, 28.2), 0, {1: "V24", 2: "GND", 3: "+5V"},
      {1: "VIN", 2: "GND", 3: "VOUT"}, "Power")
 part("R25", "10k", "res", "Rv", (64.8, 27.4), 0, {1: "V24", 2: "LED_PWR"}, block="Power")
@@ -99,8 +99,10 @@ part("R2", "10k", "res", "R", (78.0, 36.6), 0, {1: "RS485_DE", 2: "GND"}, block=
 part("R1", "120", "res", "R", (78.0, 40.2), 0, {1: "RS485_A", 2: "TERM"}, block="RS485")
 part("J3", "TERM 120R", "conn", "H2", (91.4, 37.4), 0, {1: "TERM", 2: "RS485_B"},
      {1: "T", 2: "B"}, "RS485")
-part("D3", "P6KE15CA", "tvs", "DO15v", (78.0, 44.4), 0, {1: "RS485_A", 2: "GND"}, block="RS485")
-part("D4", "P6KE15CA", "tvs", "DO15v", (87.0, 44.4), 0, {1: "RS485_B", 2: "GND"}, block="RS485")
+# RO is high impedance while the module transmits (/RE high): keep RX at idle level
+part("R17", "10k", "res", "Rv", (62.0, 36.5), 90, {1: "UART_RX", 2: "+3V3"}, block="RS485")
+part("D3", "P6KE10CA", "tvs", "DO15v", (78.0, 44.4), 0, {1: "RS485_A", 2: "GND"}, block="RS485")
+part("D4", "P6KE10CA", "tvs", "DO15v", (87.0, 44.4), 0, {1: "RS485_B", 2: "GND"}, block="RS485")
 
 # ---------------------------------------------------------------- inputs ---------------------
 # X3 on the left edge (rot 270: wire entry to the left), IN1+ at the top
@@ -112,10 +114,10 @@ part("X3", "INPUTS", "conn", "TB8", (5.2, 17.0), 270, in_nets,
      {1: "IN1+", 2: "IN1-", 3: "IN2+", 4: "IN2-", 5: "IN3+", 6: "IN3-", 7: "IN4+", 8: "IN4-"}, "Inputs")
 for n in range(4):
     y = 17.0 + 10.16 * n
-    part(f"R{5 + n}", "1k 1%", "res", "R", (13.4, y), 0, {1: "+3V3", 2: f"IN{n + 1}_LOOP"}, block="Inputs")
-    part(f"R{9 + n}", "4k7", "res", "R", (13.4, y + 3.4), 0, {1: f"IN{n + 1}_LOOP", 2: f"IN{n + 1}_ADC"},
+    part(f"R{5 + n}", "1k 1%", "res", "R", (16.6, y), 0, {1: "+3V3", 2: f"IN{n + 1}_LOOP"}, block="Inputs")
+    part(f"R{9 + n}", "4k7", "res", "R", (16.6, y + 3.4), 0, {1: f"IN{n + 1}_LOOP", 2: f"IN{n + 1}_ADC"},
          block="Inputs")
-    part(f"C{6 + n}", "100nF", "cap", "C", (13.4, y + 6.8), 0, {1: f"IN{n + 1}_ADC", 2: "GND"}, block="Inputs")
+    part(f"C{6 + n}", "100nF", "cap", "C", (16.6, y + 6.8), 0, {1: f"IN{n + 1}_ADC", 2: "GND"}, block="Inputs")
 
 # ---------------------------------------------------------------- outputs --------------------
 part("U3", "ULN2003A (DIP-16)", "ic", "DIP16", (36.0, 66.0), 90,
@@ -156,4 +158,6 @@ for k in range(1, 9):
 for i, (x, y) in enumerate([(4, 4), (96, 4), (4, 96), (96, 96)]):
     part(f"H{i + 1}", "M3", "hole", "HOLE", (x, y), 0, {}, block="Mechanical")
 
-POWER_NETS = {"VBUS", "VBUS_F", "V24", "GND", "+5V"} | {f"K{k}_{c}" for k in range(1, 5) for c in ("C", "NO", "NC")}
+# the bus feeds every module after this one: wide tracks from X1 to X2
+BUS_NETS = {"VBUS"}
+POWER_NETS = {"VBUS_F", "V24", "GND", "+5V"} | {f"K{k}_{c}" for k in range(1, 5) for c in ("C", "NO", "NC")}

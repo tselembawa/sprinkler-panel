@@ -2,8 +2,8 @@ qty;value;refs;footprint
 1;47uF 50V;C1;CP_Radial_D8.0mm_P3.50mm
 6;100nF;C2 C5 C6 C7 C8 C9;C_Disc_D5.0mm_W2.5mm_P5.00mm
 1;1N5819;D1;D_DO-41_SOD81_P10.16mm_Horizontal
-1;P6KE33A;D2;D_DO-15_P12.70mm_Horizontal
-2;P6KE15CA;D3 D4;D_DO-15_P5.08mm_Vertical_KathodeUp
+1;P6KE36A;D2;D_DO-15_P12.70mm_Horizontal
+2;P6KE10CA;D3 D4;D_DO-15_P5.08mm_Vertical_KathodeUp
 4;LED red 3mm;D5 D6 D7 D8;LED_D3.0mm
 8;LED yellow 2x5mm;D9 D10 D11 D12 D13 D14 D15 D16;LED_Rectangular_W5.0mm_H2.0mm
 1;LED green (24V);D17;LED_D3.0mm
@@ -20,7 +20,7 @@ qty;value;refs;footprint
 4;1k 1%;R5 R6 R7 R8;R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal
 4;4k7;R9 R10 R11 R12;R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal
 4;1k;R13 R14 R15 R16;R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical
-1;10k;R25;R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical
+2;10k;R17 R25;R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical
 1;8x470R bussed (4609X-101-471);RN1;R_Array_SIP9
 1;DIP 8 (address);SW1;SW_DIP_SPSTx08_Slide_9.78x22.5mm_W7.62mm_P2.54mm
 1;TSR 1-2450 (24V->5V);U1;Converter_DCDC_RECOM_R-78E-0.5_THT
