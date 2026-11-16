@@ -8,8 +8,8 @@ qty;value;refs;footprint
 8;LED yellow 2x5mm;D9 D10 D11 D12 D13 D14 D15 D16;LED_Rectangular_W5.0mm_H2.0mm
 1;LED green (24V);D17;LED_D3.0mm
 1;PTC 0.25A 60V (0ZRE0025FF);F1;Fuse_BelFuse_0ZRE0025FF_L9.6mm_W3.8mm
-1;CN3 (Nucleo right);J1;PinSocket_1x15_P2.54mm_Vertical
-1;CN4 (Nucleo left);J2;PinSocket_1x15_P2.54mm_Vertical
+1;CN3 (Nucleo left);J1;PinSocket_1x15_P2.54mm_Vertical
+1;CN4 (Nucleo right);J2;PinSocket_1x15_P2.54mm_Vertical
 1;TERM 120R;J3;PinHeader_1x02_P2.54mm_Vertical
 1;EXP (3V3 GND D4 D5);J4;PinHeader_1x04_P2.54mm_Vertical
 4;SRD-24VDC-SL-C;K1 K2 K3 K4;Relay_SPDT_SANYOU_SRD_Series_Form_C

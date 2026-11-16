@@ -77,15 +77,16 @@ part("R4", "10k 1%", "res", "R", (27.9, 20.6), 0, {1: "VSENSE", 2: "GND"}, block
 part("C5", "100nF", "cap", "C", (27.9, 24.2), 0, {1: "VSENSE", 2: "GND"}, block="Supply sense")
 
 # ---------------------------------------------------------------- Nucleo ---------------------
-# USB at the top. Pin 1 of both headers at the bottom (rot 180), CN4 left, CN3 right.
+# USB at the top, pin 1 of both headers at the top (next to the USB), CN3 left, CN4 right
+# (checked on the board: ST pinout drawing, USB up).
 cn3_nets = {1: "UART_TX", 2: "UART_RX", 3: NC, 4: "GND", 5: "DIP1", 6: "OUT1", 7: "EXP_D4",
             8: "EXP_D5", 9: "OUT2", 10: "DIP2", 11: "DIP3", 12: "OUT3", 13: "DIP4", 14: "OUT4",
             15: "DIP5"}
 cn4_nets = {1: NC, 2: "GND", 3: NC, 4: "+5V", 5: "DIP7", 6: "VSENSE", 7: "RS485_DE", 8: "DIP8",
             9: "IN4_ADC", 10: "IN3_ADC", 11: "IN2_ADC", 12: "IN1_ADC", 13: NC, 14: "+3V3", 15: "DIP6"}
-NUCLEO_X_CN4, NUCLEO_X_CN3, NUCLEO_PIN1_Y = 41.91, 57.15, 48.26
-part("J2", "CN4 (Nucleo left)", "conn", "SOCK15", (NUCLEO_X_CN4, NUCLEO_PIN1_Y), 180, cn4_nets, CN4, "Nucleo")
-part("J1", "CN3 (Nucleo right)", "conn", "SOCK15", (NUCLEO_X_CN3, NUCLEO_PIN1_Y), 180, cn3_nets, CN3, "Nucleo")
+NUCLEO_X_CN3, NUCLEO_X_CN4, NUCLEO_PIN1_Y = 41.91, 57.15, 12.7
+part("J2", "CN4 (Nucleo right)", "conn", "SOCK15", (NUCLEO_X_CN4, NUCLEO_PIN1_Y), 0, cn4_nets, CN4, "Nucleo")
+part("J1", "CN3 (Nucleo left)", "conn", "SOCK15", (NUCLEO_X_CN3, NUCLEO_PIN1_Y), 0, cn3_nets, CN3, "Nucleo")
 part("J4", "EXP (3V3 GND D4 D5)", "conn", "H4", (61.0, 40.6), 0,
      {1: "+3V3", 2: "GND", 3: "EXP_D4", 4: "EXP_D5"}, {1: "3V3", 2: "GND", 3: "D4", 4: "D5"}, "Nucleo")
 
