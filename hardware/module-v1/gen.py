@@ -82,7 +82,7 @@ def place_fp(text, p, nets):
     out.append(f"    (at {OX + x:.3f} {OY + y:.3f}{' ' + str(r) if r else ''})")
     out.append(f"    (path /{stamp(p['ref'])})")
     for ln in lines[1:]:
-        ln = ln.replace("REF**", p["ref"])
+        ln = ln.replace("REF**", p["ref"]).replace("_Vertical_KathodeUp", "_Vertical_CathodeUp")
         if ln.strip().startswith("(fp_text value"):
             ln = re.sub(r"\(fp_text value (\"[^\"]*\"|\S+)", '(fp_text value "%s"' % p["value"].replace('"', ""), ln)
         if r:   # child angles are absolute in KiCad 5 files
